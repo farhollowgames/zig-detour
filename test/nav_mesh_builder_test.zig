@@ -639,7 +639,7 @@ fn boundaryConnections(gpa: std.mem.Allocator) !Connections {
             }
         }
     }
-    var prng: std.Random.DefaultPrng = .init(0x0ffe5);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x0ffe5));
     const random = prng.random();
     for (0..2000) |_| {
         const start: [3]f32 = .{ pick(random, &xs), pick(random, &heights), pick(random, &zs) };
@@ -1377,7 +1377,7 @@ test "createNavMeshData: as many vertices as a mesh may have" {
     const vert_count = 0xfffe;
     const verts = try gpa.alloc([3]u16, vert_count);
     defer gpa.free(verts);
-    var prng: std.Random.DefaultPrng = .init(0xfffe);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0xfffe));
     const random = prng.random();
     // All at the height of the tile's floor, where the connections start.
     for (verts) |*vert| {
@@ -1427,7 +1427,7 @@ test "createNavMeshData: more polygons than an off-mesh connection can name" {
 
     // Triangles over eight vertices: most share their box with many others,
     // so the tree's sorts are full of equal keys.
-    var prng: std.Random.DefaultPrng = .init(0x10001);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x10001));
     const random = prng.random();
     for (0..poly_count) |i| {
         const p = polys[i * 6 ..][0..6];
@@ -1464,7 +1464,7 @@ test "createNavMeshData: more detail vertices than their counters hold" {
     var detail_verts: [600][3]f32 = undefined;
     var detail_tris: [16][4]u8 = undefined;
 
-    var prng: std.Random.DefaultPrng = .init(300);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(300));
     const random = prng.random();
     for (&detail_verts) |*vert| {
         vert.* = .{ random.float(f32) * 30, random.float(f32) * 10, random.float(f32) * 30 };
@@ -1743,7 +1743,7 @@ fn buildRandomMesh(
 test "createNavMeshData: random meshes" {
     const gpa = testing.allocator;
     const seed: u64 = 0x6e61_766d_6573_6801;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var arena_state: std.heap.ArenaAllocator = .init(gpa);
@@ -2189,7 +2189,7 @@ test "byte-order swaps: fewer bytes than the tile has" {
     defer gpa.free(large_copy);
 
     const seed: u64 = 0x73686f7274;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     for (0..1000) |case| {
         // Now and then one of the last few, where only the last block is

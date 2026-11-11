@@ -1096,7 +1096,7 @@ const BareMeshes = struct {
 test "findRandomPoint: random seeds and filters match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0001;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -1197,7 +1197,7 @@ test "findRandomPoint: a mesh with no tiles fails without drawing" {
 test "findRandomPointAroundCircle: random starts, radii and filters match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0002;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -1388,7 +1388,7 @@ test "findRandomPointAroundCircle: a mesh with no tiles has no start" {
 test "findPolysAroundCircle: random starts, radii, filters and buffers match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0003;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -1693,7 +1693,7 @@ fn randomShape(
 test "findPolysAroundShape: random starts, shapes, filters and buffers match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0004;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -1969,7 +1969,7 @@ test "findPolysAroundShape: buffers, filters and small pools by hand" {
 test "getPathFromDijkstraSearch: random searches, ends and buffers match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0005;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var visited: std.ArrayList(PolyRef) = .empty;
@@ -2328,7 +2328,7 @@ test "getPathFromDijkstraSearch: an open node of a sliced search has no path" {
 test "findLocalNeighbourhood: random starts, radii, filters and buffers match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0006;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -2673,7 +2673,7 @@ test "getPolyWallSegments: every polygon of every world, in every buffer" {
 test "getPolyWallSegments: random polygons, filters and buffers match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0007;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var found_count: usize = 0;
@@ -2834,7 +2834,7 @@ fn expectSoundWallDistance(start: Start, radius: f32, result: WallDistance) !Wal
 test "findDistanceToWall: random starts, radii and filters match" {
     const gpa = testing.allocator;
     const seed: u64 = 0x61726561_0008;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var outcome_counts: std.EnumArray(WallOutcome, usize) = .initFill(0);

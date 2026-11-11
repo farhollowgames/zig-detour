@@ -1046,7 +1046,7 @@ test "findPath matches the original on random pairs" {
         defer filters.deinit();
 
         const seed: u64 = 0x9a7b_0100 + @as(u64, case_index);
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var result: PathResult = undefined;
         var reached: u32 = 0;
@@ -1137,7 +1137,7 @@ test "the sliced search matches the original on random pairs" {
         defer filters.deinit();
 
         const seed: u64 = 0x9a7b_0200 + @as(u64, case_index);
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var found: PathResult = undefined;
         var result: PathResult = undefined;
@@ -1256,7 +1256,7 @@ test "findStraightPath matches the original over found paths" {
         defer pass_all.deinit();
 
         const seed: u64 = 0x9a7b_0300 + @as(u64, case_index);
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var found: PathResult = undefined;
         var corridor_buffer: [path_capacity_max]PolyRef = undefined;
@@ -1415,7 +1415,7 @@ test "raycast and raycastPath match the original on random rays" {
         defer filters.deinit();
 
         const seed: u64 = 0x9a7b_0400 + @as(u64, case_index);
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var result: RayResult = undefined;
         var stopped: u32 = 0;
@@ -1533,7 +1533,7 @@ test "moveAlongSurface matches the original on random moves" {
         defer filters.deinit();
 
         const seed: u64 = 0x9a7b_0500 + @as(u64, case_index);
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var result: MoveResult = undefined;
         var moved: u32 = 0;
@@ -1603,7 +1603,7 @@ test "findPath refuses the input the original refuses" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0600);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0600));
     const random = prng.random();
     var found: PathResult = undefined;
     const ends = try findLongPath(&queries, &pass_all, &world, random, 6, &found);
@@ -1667,7 +1667,7 @@ test "findPath fills buffers of every size as the original does" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0601);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0601));
     const random = prng.random();
     var found: PathResult = undefined;
     var result: PathResult = undefined;
@@ -1738,7 +1738,7 @@ test "searches with few nodes match the original" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0610);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0610));
     const random = prng.random();
     var result: PathResult = undefined;
     const full = path_capacity_max;
@@ -1864,7 +1864,7 @@ test "findPath under filters matches the original" {
     var filters = try Filters.init();
     defer filters.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0620);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0620));
     const random = prng.random();
     var found: PathResult = undefined;
     var result: PathResult = undefined;
@@ -2072,7 +2072,7 @@ test "the sliced search matches the original at every budget" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0630);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0630));
     const random = prng.random();
     var found: PathResult = undefined;
     var whole: PathResult = undefined;
@@ -2220,7 +2220,7 @@ test "sliced search calls in any order match the original" {
 
     // Two ends so far apart that the search still runs after the most
     // updates the cases below give it before they finalize.
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0640);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0640));
     const random = prng.random();
     const early_updates = [_]u32{ 0, 1, 2, 5, 12 };
     var ends: Ends = undefined;
@@ -2406,7 +2406,7 @@ test "findStraightPath fills buffers of every size as the original does" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0650);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0650));
     const random = prng.random();
     var found: PathResult = undefined;
     var whole: StraightResult = undefined;
@@ -2466,7 +2466,7 @@ test "findStraightPath over short and odd corridors matches the original" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0651);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0651));
     const random = prng.random();
     var found: PathResult = undefined;
     var whole: StraightResult = undefined;
@@ -2572,7 +2572,7 @@ test "findStraightPath over broken corridors matches the original" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0652);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0652));
     const random = prng.random();
     var found: PathResult = undefined;
     var whole: StraightResult = undefined;
@@ -2688,7 +2688,7 @@ test "rays and moves from polygon middles match the original at every vertex and
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0660);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0660));
     const random = prng.random();
     var targets_buffer: [polygon_target_count_max][3]f32 = undefined;
     var ray: RayResult = undefined;
@@ -2835,7 +2835,7 @@ test "rays and moves refuse the input the original refuses" {
     var pass_all = try Filters.init();
     defer pass_all.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x9a7b_0661);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9a7b_0661));
     const random = prng.random();
     const filters = &pass_all;
     const start = try somePlace(&queries, filters, &world, random);

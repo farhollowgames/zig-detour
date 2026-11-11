@@ -49,6 +49,11 @@ fn referenceAll(comptime T: type, comptime depth: u32) void {
     }
 }
 
+test "the fuzz seed is printed when it is set" {
+    const fuzz_seed = @import("fuzz_options").fuzz_seed;
+    if (fuzz_seed != 0) std.debug.print("seeded tests run with -Dfuzz-seed={d}\n", .{fuzz_seed});
+}
+
 test "every public declaration compiles" {
     referenceAll(detour, 3);
 }

@@ -3,6 +3,7 @@
 //! random sequence for both sides, and comparisons that print what differs.
 
 const std = @import("std");
+const fuzz_options = @import("fuzz_options");
 
 pub const detour = @import("detour");
 pub const reference = @import("reference_detour.zig");
@@ -118,6 +119,19 @@ pub fn expectBytes(expected: []const u8, actual: []const u8) !void {
 /// The floats of `points` as one flat slice.
 pub fn flat(points: anytype) []const f32 {
     return @ptrCast(points);
+}
+
+// ---------------------------------------------------------------------------
+// Seeds
+// ---------------------------------------------------------------------------
+
+/// The seed a test's random inputs start from: `fixed`, the test's own seed,
+/// when `-Dfuzz-seed` is zero (the default), and otherwise a mix of the two,
+/// so one option moves every seeded test to new inputs. A failing test prints
+/// its fixed seed; the same `-Dfuzz-seed` repeats the run.
+pub fn fuzzSeed(fixed: u64) u64 {
+    if (fuzz_options.fuzz_seed == 0) return fixed;
+    return std.hash.Wyhash.hash(fuzz_options.fuzz_seed, std.mem.asBytes(&fixed));
 }
 
 // ---------------------------------------------------------------------------

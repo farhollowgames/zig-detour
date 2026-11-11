@@ -846,7 +846,7 @@ test "integer queries at the coordinate bound: no overflow, answers inside the b
         const at = [3]i32{ -m, 0, m };
         points[i] = .{ at[i % 3], at[i / 3 % 3], at[i / 9] };
     }
-    var prng: std.Random.DefaultPrng = .init(0x65646765);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x65646765));
     for (points[27..]) |*point| point.* = bound_grid.point(prng.random());
     const sink_bytes = try gpa.alloc(u8, points.len * 12 * 1024);
     defer gpa.free(sink_bytes);
@@ -1197,7 +1197,7 @@ test "integer on a mesh with no tile: the float port's statuses" {
     );
     try testing.expectEqual(0, count);
 
-    var prng: std.Random.DefaultPrng = .init(1);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(1));
     var float_point: [3]f32 = undefined;
     var point: [3]i32 = undefined;
     var ref: PolyRef = 0;
@@ -1574,7 +1574,7 @@ test "integer on one polygon: points inside, on an edge, at a vertex and outside
     try testing.expectEqualSlices([3]i32, &.{ middle, points[1] }, corners[0..count]);
 
     // A random point lies on the polygon.
-    var prng: std.Random.DefaultPrng = .init(7);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(7));
     for (0..100) |_| {
         var random_ref: PolyRef = 0;
         var random_point: [3]i32 = undefined;

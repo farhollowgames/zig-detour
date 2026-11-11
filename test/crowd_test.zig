@@ -1146,7 +1146,7 @@ test "init: a used crowd starts over and keeps its filters" {
     try world.init(gpa, support.nav_test_obj, support.tiled_config, connected_options);
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(62);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(62));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 8, 0.6);
@@ -1206,7 +1206,7 @@ test "addAgent and removeAgent: slots fill, free and fill again lowest first" {
     try world.init(gpa, support.nav_test_obj, support.solo_config, .{ .seed = 63 });
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(63);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(63));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 12, 0.6);
@@ -1264,7 +1264,7 @@ test "addAgent: agents put off the mesh are held the same" {
     try world.init(gpa, support.nav_test_obj, support.solo_config, .{ .seed = 64 });
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(64);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(64));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 10, 0.6);
@@ -1316,7 +1316,7 @@ test "updateAgentParameters: every set of update flags steers the same" {
     try world.init(gpa, support.nav_test_obj, support.tiled_config, varied_options);
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(65);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(65));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 8, 0.6);
@@ -1527,7 +1527,7 @@ test "requestMoveVelocity and resetMoveTarget: agents steer by velocity, stop an
     try world.init(gpa, support.nav_test_obj, support.tiled_config, connected_options);
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(66);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(66));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 10, 0.6);
@@ -1671,7 +1671,7 @@ test "update: the traced agent's shortcut and avoidance samples are the same" {
     defer world.deinit();
     const zero_steps = !hasDegenerateConnection(&world);
 
-    var prng: std.Random.DefaultPrng = .init(67);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(67));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, &world, 12, 0.6);
@@ -1741,7 +1741,7 @@ fn fuzzRun(
     step_count: usize,
 ) !void {
     errdefer std.debug.print("  fuzz seed {d}\n", .{seed});
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var pair: CrowdPair = undefined;
     try pair.init(gpa, world, agent_count_max, 0.8);

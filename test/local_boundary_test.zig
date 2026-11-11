@@ -676,7 +676,7 @@ test "empty and reset: a boundary that holds nothing" {
     try support.expectPoint(unset, boundaries.port.getCenter());
     try testing.expect(!try boundaries.expectSameValidity(queries, pass_all));
 
-    var prng: std.Random.DefaultPrng = .init(41);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(41));
     const random = prng.random();
     var filled: usize = 0;
     for (0..32) |round| {
@@ -710,7 +710,7 @@ test "update: a zero reference resets both sides" {
     const unset: [3]f32 = @splat(std.math.floatMax(f32));
     const nan = std.math.nan(f32);
 
-    var prng: std.Random.DefaultPrng = .init(42);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(42));
     const random = prng.random();
     for (0..40) |round| {
         errdefer std.debug.print("  round {d}\n", .{round});
@@ -754,7 +754,7 @@ test "update: a reference, a range or a position the neighbourhood query refuses
     const nan = std.math.nan(f32);
     const inf = std.math.inf(f32);
 
-    var prng: std.Random.DefaultPrng = .init(43);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(43));
     const random = prng.random();
     for (0..64) |round| {
         errdefer std.debug.print("  round {d}\n", .{round});
@@ -826,7 +826,7 @@ test "update: ranges from zero to the largest float" {
         1.0e30,       std.math.floatMax(f32),
     };
 
-    var prng: std.Random.DefaultPrng = .init(44);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(44));
     const random = prng.random();
     var none_kept: usize = 0;
     var capped: usize = 0;
@@ -861,7 +861,7 @@ test "update: more walls in range than a boundary keeps" {
     var filters: Filters = try .init();
     defer filters.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(45);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(45));
     const random = prng.random();
     var capped: usize = 0;
     for (0..240) |round| {
@@ -949,7 +949,7 @@ test "update: a wall exactly as far away as the range" {
     const pass_all = &fixture.pass_all;
     const boundaries = &fixture.boundaries;
 
-    var prng: std.Random.DefaultPrng = .init(46);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(46));
     const random = prng.random();
     var exact: usize = 0;
     for (0..200) |round| {
@@ -1063,7 +1063,7 @@ test "isValid: other filters, and polygon flags changed on both sides" {
     var filters: Filters = try .init();
     defer filters.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(47);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(47));
     const random = prng.random();
     for (0..96) |round| {
         errdefer std.debug.print("  round {d}\n", .{round});
@@ -1128,7 +1128,7 @@ test "isValid: a tile removed from both meshes, then put back" {
         try fixture.init(gpa, world_case);
         defer fixture.deinit();
 
-        var prng: std.Random.DefaultPrng = .init(48 + world_index);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(48 + world_index));
         const random = prng.random();
         for (0..4) |round| {
             errdefer std.debug.print("  round {d}\n", .{round});
@@ -1158,7 +1158,7 @@ test "fuzz: updates, validity, flag changes and tile removals on every world" {
         var connections = try collectConnections(gpa, &world.nav);
         defer gpa.free(connections);
 
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
 
         var removals: usize = 0;

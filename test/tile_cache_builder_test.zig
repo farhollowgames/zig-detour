@@ -1241,7 +1241,7 @@ test "buildLayer: every kind of status the codec's compress returns" {
     try codecs.init(.run_length);
     defer codecs.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x51a7);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x51a7));
     var input: LayerInput = try .initBlank(gpa, 7, 5);
     defer input.deinit(gpa);
     fillRandomGrid(prng.random(), input.heights);
@@ -1278,7 +1278,7 @@ test "buildLayer: random layers, headers and codecs" {
     defer scratch.deinit();
 
     const seed = 0x7c1a;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var unpacked_count: u32 = 0;
     for (0..1500) |case| {
@@ -1565,7 +1565,7 @@ test "decompressLayer: truncated, corrupted and random packed layers" {
     defer scratch.deinit();
 
     const seed = 0xdec0;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var blob: std.ArrayList(u8) = .empty;
     defer blob.deinit(gpa);
@@ -2132,7 +2132,7 @@ test "buildRegions, buildContours, buildPolyMesh: random layers" {
     defer scratch.deinit();
 
     const seed: u64 = 0x6c61_7965_7273_0006;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     const climbs = [_]i32{ -1, 0, 1, 2, 4, 255 };
     const max_errors = [_]f32{ 0, 0.5, 1.3, 3, 100 };
@@ -2352,7 +2352,7 @@ test "markCylinderArea, markBoxArea, markOrientedBoxArea: random shapes mark the
     defer scratch.deinit();
 
     const seed = 0x3a7c;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     const layers = try realLayers();
     var marked_cells: usize = 0;
@@ -2512,7 +2512,7 @@ test "markCylinderArea, markBoxArea, markOrientedBoxArea: random shapes mark the
 
 test "swapEndianHeader: headers in either byte order swap and swap back, others are refused" {
     const seed = 0x5a9e;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     const magic: i32 = builder.tile_cache_magic;
     const version: i32 = builder.tile_cache_version;

@@ -682,7 +682,7 @@ test "Status helpers: hand-made patterns" {
 
 test "Status helpers: fuzz" {
     const seed = 0x57a7;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..4096) |case| {
@@ -720,7 +720,7 @@ test "Poly: setArea and setType over every area and type, in both orders" {
     // Starting bytes: all clear, all set, alternating, and random. Every byte
     // of the record is meaningful, so the setters must leave all but the
     // shared one alone.
-    var prng: std.Random.DefaultPrng = .init(0x9017);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x9017));
     var starts: [4][@sizeOf(nav_mesh.Poly)]u8 = undefined;
     @memset(&starts[0], 0x00);
     @memset(&starts[1], 0xff);
@@ -768,7 +768,7 @@ test "Poly: setArea and setType in random order, fuzz" {
     try testing.expectEqual(@sizeOf(reference.Poly), @sizeOf(nav_mesh.Poly));
 
     const seed = 0x9018;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var upstream: reference.Poly = undefined;

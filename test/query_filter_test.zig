@@ -637,7 +637,7 @@ test "QueryFilter: a new filter's flags and area costs" {
 
 test "QueryFilter: every setter, read back through every getter" {
     const seed: u64 = 0x66696c746572_01;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var filter: FilterPair = try .create();
     defer filter.deinit();
@@ -654,7 +654,7 @@ test "QueryFilter: every setter, read back through every getter" {
 test "passFilter: every polygon under random flags, and polygons whose flags changed" {
     const gpa = testing.allocator;
     const seed: u64 = 0x66696c746572_02;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for ([_]WorldCase{ nav_test_tiled, dungeon_one_tile, dungeon_tiled_no_tree }) |world_case| {
@@ -696,7 +696,7 @@ test "passFilter: every polygon under random flags, and polygons whose flags cha
 test "getCost: random walks across polygons of every area, under random area costs" {
     const gpa = testing.allocator;
     const seed: u64 = 0x66696c746572_03;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var world: support.World = undefined;
@@ -727,7 +727,7 @@ test "a filter with its own functions: queries ask it the same questions in the 
     if (!build_options.virtual_query_filter) return error.SkipZigTest;
     const gpa = testing.allocator;
     const seed: u64 = 0x66696c746572_04;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var original_log: CallLog = .{};

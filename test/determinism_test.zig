@@ -256,7 +256,7 @@ test "queries give the same bytes on every run and on 1, 2 and many threads" {
     });
     defer world.deinit();
 
-    var prng: std.Random.DefaultPrng = .init(0x64657465726d);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x64657465726d));
     const random = prng.random();
     const points = try gpa.alloc([3]f32, point_count);
     defer gpa.free(points);

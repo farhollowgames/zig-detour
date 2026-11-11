@@ -416,7 +416,7 @@ test "addItem: a full pool leaves the remaining cells out" {
 test "addItem: the last entry of a 65536-entry pool" {
     const gpa = testing.allocator;
     const seed: u64 = 0x65536;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     // Entries name each other by 16-bit index, and 0xffff also ends a chain.
@@ -511,7 +511,7 @@ test "addItem and queryItems: one item beyond 16 bits of cells" {
 test "addItem and queryItems: random items, every query's ids in order" {
     const gpa = testing.allocator;
     const seed: u64 = 0x9e3779b97f4a7c15;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const pool_sizes = [_]i32{ 1, 2, 3, 7, 16, 100, 257, 1000, 4096, 5000 };
@@ -554,7 +554,7 @@ test "addItem and queryItems: random items, every query's ids in order" {
 test "getItemCountAt: stacked items, and cells anywhere in the integer range" {
     const gpa = testing.allocator;
     const seed: u64 = 0x636f756e744174;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const pool_sizes = [_]i32{ 1, 4, 9, 64, 300, 2000 };
@@ -607,7 +607,7 @@ test "getItemCountAt: stacked items, and cells anywhere in the integer range" {
 test "addItem: random items into a pool too small for them" {
     const gpa = testing.allocator;
     const seed: u64 = 0x706f6f6c46756c6c;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const cell_sizes = [_]f32{ 0.25, 0.3, 1.0, 1.7, 64.0 };
@@ -658,7 +658,7 @@ fn expectSameAfterRandomItems(pair: *GridPair, random: std.Random, cell_size: f3
 test "clear: a cleared grid is empty and fills again" {
     const gpa = testing.allocator;
     const seed: u64 = 0x636c656172;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const pool_sizes = [_]i32{ 1, 5, 64, 500 };
@@ -696,7 +696,7 @@ test "clear: a cleared grid is empty and fills again" {
 test "init: the bucket table follows the pool size" {
     const gpa = testing.allocator;
     const seed: u64 = 0x6275636b657473;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     // The original sizes its bucket table to the pool size rounded up to a
@@ -784,7 +784,7 @@ fn storedCell(cell: i32) i32 {
 test "addItem and queryItems: cells beyond 16 bits" {
     const gpa = testing.allocator;
     const seed: u64 = 0x66617243656c6c73;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     // The cell sizes are powers of two, so a coordinate is exactly a cell
@@ -967,7 +967,7 @@ test "addItem and queryItems: coordinates beyond the cell range" {
     }
 
     const seed: u64 = 0x6265796f6e64;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const pool_sizes = [_]i32{ 1, 8, 64, 1000, 70000 };

@@ -284,7 +284,7 @@ test "init: sizes both sides accept and refuse, and a second init of a used queu
     var pair: QueuePair = undefined;
     try pair.init(gpa, &world);
     defer pair.deinit();
-    var prng: std.Random.DefaultPrng = .init(72);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(72));
     const random = prng.random();
 
     // The original needs at least four nodes, or its node table has no bucket.
@@ -308,7 +308,7 @@ test "request: a full queue refuses, and freed entries take new requests" {
     var pair: QueuePair = undefined;
     try pair.init(gpa, &world);
     defer pair.deinit();
-    var prng: std.Random.DefaultPrng = .init(73);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(73));
     const random = prng.random();
     try testing.expect(try pair.initQueues(64, 512));
 
@@ -337,7 +337,7 @@ test "update: every iteration budget, and results left unread expire" {
     var pair: QueuePair = undefined;
     try pair.init(gpa, &world);
     defer pair.deinit();
-    var prng: std.Random.DefaultPrng = .init(74);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(74));
     const random = prng.random();
     try testing.expect(try pair.initQueues(128, 1024));
 
@@ -366,7 +366,7 @@ test "getPathResult: buffers shorter, as long as and longer than the path" {
     var pair: QueuePair = undefined;
     try pair.init(gpa, &world);
     defer pair.deinit();
-    var prng: std.Random.DefaultPrng = .init(75);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(75));
     const random = prng.random();
 
     // A path size of 6 cuts long paths short; a pool of 24 nodes runs out.
@@ -418,7 +418,7 @@ test "path queue: seeded runs of requests, updates, status reads and results" {
     var partial_count: usize = 0;
     var refused_count: usize = 0;
     for ([_]u64{ 0x70617468_71, 0x70617468_72 }) |seed| {
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var pair: QueuePair = undefined;
         try pair.init(gpa, &world);

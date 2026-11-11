@@ -383,7 +383,7 @@ test "Node: whole random nodes written by each side leave the same bytes" {
     try testing.expect(reference.ref_sizeof_node() <= node_bytes_len);
 
     const seed: u64 = 0x6e6f6465;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..4000) |case| {
@@ -1081,7 +1081,7 @@ const find_rooms = [_]usize{ 0, 1, 2, 4, find_room_max };
 /// Makes random calls on a pool of each side and compares what every call
 /// hands back, and every fifty calls the whole of the two pools.
 fn fuzzPool(gpa: std.mem.Allocator, fuzz: PoolFuzz, seed: u64) !void {
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var pair = try PoolPair.init(gpa, fuzz.node_count_max, fuzz.hash_size);
@@ -1661,7 +1661,7 @@ fn randomTotal(random: std.Random, not_a_number: bool) f32 {
 /// call, the node handed back, whether the queue is empty and its top, and
 /// now and then and at the end the order every node leaves in.
 fn fuzzQueue(gpa: std.mem.Allocator, fuzz: QueueFuzz, seed: u64) !void {
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var pair = try QueuePair.init(gpa, fuzz.capacity, fuzz.node_count);

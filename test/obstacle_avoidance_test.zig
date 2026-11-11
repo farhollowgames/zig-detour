@@ -1166,7 +1166,7 @@ fn randomBitsSample(random: std.Random) Sample {
 test "ObstacleAvoidanceDebug: random samples of any bits, added, dropped and read back" {
     const gpa = testing.allocator;
     const seed: u64 = 0x73616d706c6573;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const sample_room = 40;
@@ -1237,7 +1237,7 @@ fn randomPenalty(random: std.Random, spread: PenaltySpread, base: f32) f32 {
 test "ObstacleAvoidanceDebug.normalizeSamples: random penalties, close, wide and awkward" {
     const gpa = testing.allocator;
     const seed: u64 = 0x6e6f726d616c697a;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var rescaled_count: usize = 0;
@@ -1545,7 +1545,7 @@ fn randomBitsPoint(random: std.Random) [3]f32 {
 test "ObstacleAvoidanceQuery: random obstacles of any bits, added, dropped and read back" {
     const gpa = testing.allocator;
     const seed: u64 = 0x6f62737461636c65;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const room_max = 12;
@@ -2367,7 +2367,7 @@ fn expectSameRound(
 /// picks one, so the two samplers follow each other on the same queries.
 fn expectSameRandomScenes(only: ?Sampler, seed: u64, case_count: usize) !void {
     const gpa = testing.allocator;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var reach: Reach = .{};
 

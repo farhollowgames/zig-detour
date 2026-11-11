@@ -1106,7 +1106,7 @@ const node_counts_refused = [_]i32{
 test "init and deinit: node counts both sides accept and refuse" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0001;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     errdefer std.debug.print("  seed {d}\n", .{seed});
 
@@ -1255,7 +1255,7 @@ test "getAttachedNavMesh: the mesh of the last init both sides accepted" {
 test "findNearestPoly: random boxes in every world" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0003;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var filters: FilterSet = try .create();
@@ -1295,7 +1295,7 @@ test "findNearestPoly: random boxes in every world" {
 test "queryPolygons: random boxes into buffers of every size" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0004;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var filters: FilterSet = try .create();
@@ -1375,7 +1375,7 @@ test "queryPolygons: random boxes into buffers of every size" {
 test "queryPolygonsWith: every batch of random boxes" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0005;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var filters: FilterSet = try .create();
@@ -1488,7 +1488,7 @@ fn expectBoxQueries(
 test "findNearestPoly, queryPolygons and queryPolygonsWith: hand-made boxes" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0006;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var pass_all: FilterPair = try .create();
@@ -1625,7 +1625,7 @@ test "findNearestPoly, queryPolygons and queryPolygonsWith: hand-made boxes" {
 test "closestPointOnPoly, closestPointOnPolyBoundary and getPolyHeight: around every polygon" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0007;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var refs: std.ArrayList(PolyRef) = .empty;
@@ -1760,7 +1760,7 @@ test "closestPointOnPoly, closestPointOnPolyBoundary and getPolyHeight: around e
 test "isValidPolyRef: filters that pass and reject, references that name nothing" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0008;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var filters: FilterSet = try .create();
@@ -1883,7 +1883,7 @@ fn expectAllRefused(
 test "every point query: references of a tile removed and added again" {
     const gpa = testing.allocator;
     const seed: u64 = 0x51e7_0009;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var pass_all: FilterPair = try .create();

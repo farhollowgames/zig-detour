@@ -61,6 +61,12 @@ pub fn build(b: *std.Build) void {
         "Skip tests that do not match any filter",
     ) orelse &.{};
 
+    const fuzz_seed = b.option(
+        u64,
+        "fuzz-seed",
+        "Move every seeded differential test to other inputs (default 0: the tests' own seeds)",
+    ) orelse 0;
+
     const test_step = b.step("test", "Run unit and differential tests");
     const bench_step = b.step("bench", "Time the port against the original (ReleaseFast)");
 
@@ -92,6 +98,7 @@ pub fn build(b: *std.Build) void {
                 .imports = &.{
                     .{ .name = "detour", .module = detour_for_tests },
                     .{ .name = "build_options", .module = options },
+                    .{ .name = "fuzz_options", .module = fuzzOptionsModule(b, fuzz_seed) },
                 },
             }),
             .filters = test_filters,
@@ -123,6 +130,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "detour", .module = detourModule(b, target, .fast, bench_options) },
             .{ .name = "build_options", .module = bench_options },
+            // The benchmark's inputs stay those of the tests' own seeds.
+            .{ .name = "fuzz_options", .module = fuzzOptionsModule(b, 0) },
         },
     });
     addMeshes(b, upstream, support);
@@ -139,6 +148,13 @@ fn optionsModule(b: *std.Build, configuration: Configuration) *std.Build.Module 
     options.addOption(bool, "polyref64", configuration.polyref64);
     options.addOption(bool, "virtual_query_filter", configuration.virtual_query_filter);
     options.addOption(bool, "fast_math", configuration.fast_math);
+    return options.createModule();
+}
+
+/// The seed offset of the differential tests' random inputs.
+fn fuzzOptionsModule(b: *std.Build, fuzz_seed: u64) *std.Build.Module {
+    const options = b.addOptions();
+    options.addOption(u64, "fuzz_seed", fuzz_seed);
     return options.createModule();
 }
 

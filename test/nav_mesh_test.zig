@@ -316,7 +316,7 @@ fn expectSameLookups(
 ) !void {
     errdefer std.debug.print("  lookups with seed {d}\n", .{seed});
     const grid = level.grid;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     // Tiles by grid position, inside the grid and around it.
@@ -789,7 +789,7 @@ test "setPolyFlags and setPolyArea" {
     defer world.deinit();
     const nav = &world.nav;
     const expected_nav = world.reference_nav;
-    var prng: std.Random.DefaultPrng = .init(62);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(62));
     const random = prng.random();
 
     for (0..4000) |i| {
@@ -821,7 +821,7 @@ test "storeTileState and restoreTileState" {
     defer world.deinit();
     const nav = &world.nav;
     const expected_nav = world.reference_nav;
-    var prng: std.Random.DefaultPrng = .init(72);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(72));
     const random = prng.random();
 
     try testing.expectEqual(
@@ -978,7 +978,7 @@ test "removeTile, then addTile into the entry and salt a reference names" {
     }
     try expectSameMeshes(expected_nav, nav);
 
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     const order = try gpa.alloc(usize, count);
     defer gpa.free(order);
@@ -1273,7 +1273,7 @@ test "initSingleTile" {
     // A blob cut short names blocks it does not hold: refused, and the mesh
     // left empty. (The original reads past the end, so the port runs alone.)
     const seed = 113;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     for (0..1000) |case| {
         errdefer std.debug.print("  seed {d}, case {d}\n", .{ seed, case });
@@ -1303,7 +1303,7 @@ test "closestPointOnPoly and getPolyHeight" {
         try testing.expect(reference.ref_status_succeeded(ready));
 
         const seed = 200 + case_index;
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         var over_count: usize = 0;
         var off_count: usize = 0;
@@ -1381,7 +1381,7 @@ test "encodePolyId and decodePolyId" {
         const expected_nav = pair.reference_nav;
 
         const seed = 300 + shape_index;
-        var prng: std.Random.DefaultPrng = .init(seed);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
         const random = prng.random();
         for (0..2000) |case| {
             errdefer std.debug.print("  seed {d}, case {d}\n", .{ seed, case });
@@ -1439,7 +1439,7 @@ test "restoreTileState: corrupted and truncated states" {
     const nav = &world.nav;
     const expected_nav = world.reference_nav;
     const seed = 122;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var restored: usize = 0;
@@ -1995,7 +1995,7 @@ fn originalStopsAtHeader(nav: *const NavMesh, blob: []const u8) bool {
 test "addTile: damaged tiles are refused, or taken as the original takes them" {
     const gpa = testing.allocator;
     const seed: u64 = 0x64616d61676564;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     const cases_per_world = 700;

@@ -415,7 +415,7 @@ test "min, max, abs, sqr and clamp on f32: zeros of both signs, one at a time" {
 
 test "min, max, abs, sqr and clamp on f32: fuzz" {
     const seed = 0x3201;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -469,7 +469,7 @@ test "min, max, abs, sqr and clamp on i32: every triple of edge values" {
 
 test "min, max, abs, sqr and clamp on i32: fuzz" {
     const seed = 0x3202;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -494,7 +494,7 @@ test "isFinite: the awkward floats" {
 
 test "isFinite: random bit patterns" {
     const seed = 0x3203;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -538,7 +538,7 @@ test "math builtins: sqrt, floor, ceil and abs on the awkward floats" {
 
 test "math builtins: sqrt, floor, ceil and abs, fuzz" {
     const seed = 0x3204;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -580,7 +580,7 @@ test "math builtins: cos and sin at angles that matter" {
 
 test "math builtins: cos and sin, fuzz" {
     const seed = 0x3205;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -680,7 +680,7 @@ test "vector helpers: hand-made vectors and scalars" {
 
 test "vector helpers: fuzz" {
     const seed = 0x7ec1;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -814,7 +814,7 @@ test "vnormalize: zero, tiny, huge and ordinary vectors" {
 
 test "vnormalize: fuzz" {
     const seed = 0x7ec2;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -915,7 +915,7 @@ test "overlapBounds: every arrangement of four values on each axis" {
 
 test "overlapQuantBounds and overlapBounds: fuzz" {
     const seed = 0xb0e5;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1097,7 +1097,7 @@ test "triArea2d, closestPointOnTriangle and closestHeightOnTriangle: hand-made t
 
 test "triArea2d, closestPointOnTriangle and closestHeightOnTriangle: fuzz" {
     const seed = 0x7a1a;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1273,7 +1273,7 @@ test "intersectSegmentPoly2d: segments turned a hair from parallel to an edge" {
 
 test "intersectSegmentPoly2d: fuzz" {
     const seed = 0x5e91;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1354,7 +1354,7 @@ test "intersectSegmentSegment2d: segments turned a hair from parallel" {
 
 test "intersectSegmentSegment2d: fuzz" {
     const seed = 0x5e92;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1428,7 +1428,7 @@ test "pointInPolygon and distancePointPolyEdgesSqr: every lattice point in the p
 
 test "pointInPolygon and distancePointPolyEdgesSqr: fuzz" {
     const seed = 0x9091;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1466,7 +1466,7 @@ test "distancePointSegmentSqr2d: every lattice triple" {
 
 test "distancePointSegmentSqr2d: fuzz" {
     const seed = 0x9092;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1534,7 +1534,7 @@ test "calcPolyCenter: hand-made index lists" {
 
 test "calcPolyCenter: fuzz" {
     const seed = 0x9093;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1628,7 +1628,7 @@ test "overlapPolyPoly2d: gaps around the 1e-4 tolerance" {
 
 test "overlapPolyPoly2d: fuzz" {
     const seed = 0x9094;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1759,7 +1759,7 @@ fn randomDraw(random: std.Random) f32 {
 
 test "randomPointInConvexPoly: fuzz" {
     const seed = 0xa4d1;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1811,7 +1811,7 @@ test "nextPow2 and ilog2: every power of two, its neighbours and the ends" {
 
 test "nextPow2 and ilog2: fuzz" {
     const seed = 0x1092;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1838,7 +1838,7 @@ test "align4: every small value and the largest one upstream can add 3 to" {
 
 test "align4: fuzz" {
     const seed = 0xa164;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1874,7 +1874,7 @@ test "oppositeTile: the eight sides, the sides around them and the ends" {
 
 test "oppositeTile: fuzz" {
     const seed = 0x0991;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -1913,7 +1913,7 @@ test "swapEndianFloat: awkward floats and byte patterns" {
 
 test "swapEndianFloat: fuzz" {
     const seed = 0x5a4f;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {
@@ -2062,7 +2062,7 @@ fn expectTruncAll(x: f32) !void {
 
 test "truncToInt: fuzz against the 64-bit working" {
     const seed = 0x7c01;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for (0..fuzz_cases) |case| {

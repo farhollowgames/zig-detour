@@ -687,7 +687,7 @@ const MergeTally = struct {
 /// Runs `merge` on `merge_fuzz_case_count` random pairs of lists, every
 /// shape with every fit.
 fn fuzzMerge(merge: Merge, seed: u64) !void {
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var tally: MergeTally = .{};
 
@@ -1578,7 +1578,7 @@ test "findCorners: every buffer size on routes through the tiled world" {
     errdefer std.debug.print("  in world \"{s}\"\n", .{case.name});
 
     const seed: u64 = 0xc02e;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     const rooms = [_]usize{ 0, 1, 2, 3, 4, 8, 32, corner_room };
     const few_rooms = [_]usize{ 0, 1, 2, corner_room };
@@ -1705,7 +1705,7 @@ test "optimizePathVisibility: looks toward corners, the target and stray points"
     errdefer std.debug.print("  in world \"{s}\"\n", .{case.name});
 
     const seed: u64 = 0x71b5;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     // A range at or under the distance to the point looks exactly that far,
     // a longer one overshoots, and zero leaves the look without a
@@ -1774,7 +1774,7 @@ test "optimizePathTopology: a short search along detours, plain routes and broke
     errdefer std.debug.print("  in world \"{s}\"\n", .{case.name});
 
     const seed: u64 = 0x7090;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var rewritten: usize = 0;

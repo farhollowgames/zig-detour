@@ -335,7 +335,7 @@ const Filters = struct {
 /// the origin: rolling ground of 2 m squares with a few blocks standing on
 /// it, as OBJ text. Free with `gpa.free`.
 fn randomLevelObj(gpa: std.mem.Allocator, seed: u64) ![]u8 {
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
     var text: std.ArrayList(u8) = .empty;
     errdefer text.deinit(gpa);
@@ -618,7 +618,7 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
     var tally: Tally = .{};
     var border_cases: usize = 0;
     var ties: usize = 0;
-    var prng: std.Random.DefaultPrng = .init(0x6e656172);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x6e656172));
     const random = prng.random();
     for (try pairs(), 0..) |*pair, level| {
         for (0..400) |case| {
@@ -794,7 +794,7 @@ fn nearBorder(pair: *Pair, ref: PolyRef, center: [3]i32, half_extents: [3]i32) !
 
 test "integer queryPolygons: the same polygons but those whose tree box lies at the border" {
     const gpa = testing.allocator;
-    var prng: std.Random.DefaultPrng = .init(0x71756572);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x71756572));
     const random = prng.random();
     var float_refs: [result_count_max]PolyRef = undefined;
     var refs: [result_count_max]PolyRef = undefined;
@@ -887,7 +887,7 @@ fn floatClosest(pair: *Pair, ref: PolyRef, p: [3]i32) ClosestAnswer {
 
 test "integer closestPointOnPoly, closestPointOnPolyBoundary, getPolyHeight: within tolerance" {
     var tally: Tally = .{};
-    var prng: std.Random.DefaultPrng = .init(0x636c6f73);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x636c6f73));
     const random = prng.random();
     for (try pairs(), 0..) |*pair, level| {
         for (0..400) |case| {
@@ -1109,7 +1109,7 @@ fn integerPath(
 test "integer findPath and the sliced search: the same status, the same corridor or one as cheap" {
     var tally: Tally = .{};
     var same_corridor: usize = 0;
-    var prng: std.Random.DefaultPrng = .init(0x70617468);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x70617468));
     const random = prng.random();
     var expected: PathAnswer = undefined;
     var near: PathAnswer = undefined;
@@ -1345,7 +1345,7 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
     var tally: Tally = .{};
     var shared_vertex_corners: usize = 0;
     var longer_float_paths: usize = 0;
-    var prng: std.Random.DefaultPrng = .init(0x73747261);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x73747261));
     const random = prng.random();
     var corridor: PathAnswer = undefined;
     var float_corners: [result_count_max][3]f32 = undefined;
@@ -1566,7 +1566,7 @@ fn floatRay(
 
 test "integer raycast: the same polygons and wall; hit point, normal and cost within tolerance" {
     var tally: Tally = .{};
-    var prng: std.Random.DefaultPrng = .init(0x72617963);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x72617963));
     const random = prng.random();
     var expected: RayAnswer = undefined;
     var near: RayAnswer = undefined;
@@ -1677,7 +1677,7 @@ fn floatMove(
 
 test "integer moveAlongSurface: the same polygons visited, the end within tolerance" {
     var tally: Tally = .{};
-    var prng: std.Random.DefaultPrng = .init(0x6d6f7665);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x6d6f7665));
     const random = prng.random();
     var expected: MoveAnswer = undefined;
     var near: MoveAnswer = undefined;
@@ -1915,7 +1915,7 @@ fn integerAround(
 
 test "integer findPolysAround*, findLocalNeighbourhood: the same polygons, costs within tolerance" {
     var tally: Tally = .{};
-    var prng: std.Random.DefaultPrng = .init(0x726f756e);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x726f756e));
     const random = prng.random();
     var expected: AroundAnswer = undefined;
     var near: AroundAnswer = undefined;
@@ -2087,7 +2087,7 @@ fn floatWall(
 
 test "integer findDistanceToWall: the distance, wall point and normal within tolerance" {
     var tally: Tally = .{};
-    var prng: std.Random.DefaultPrng = .init(0x77616c6c);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x77616c6c));
     const random = prng.random();
     var ties: usize = 0;
     for (try pairs(), 0..) |*pair, level| {
@@ -2169,7 +2169,7 @@ fn passes(pair: *Pair, ref: PolyRef, filter: *const integer.QueryFilter) bool {
 }
 
 test "integer findRandomPoint, findRandomPointAroundCircle: points on passing polygons" {
-    var prng: std.Random.DefaultPrng = .init(0x72616e64);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x72616e64));
     const random = prng.random();
     var draws: usize = 0;
     for (try pairs(), 0..) |*pair, level| {
@@ -2230,7 +2230,7 @@ test "integer findRandomPoint: over many draws polygons are picked in proportion
         total += area.*;
     }
 
-    var prng: std.Random.DefaultPrng = .init(0x61726561);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x61726561));
     const random = prng.random();
     const filter: integer.QueryFilter = .{};
     const draw_count = 200_000;

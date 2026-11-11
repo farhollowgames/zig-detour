@@ -1547,7 +1547,7 @@ test "init: too many tiles to leave ten bits of salt" {
             reference_tile_cache.ref_tc_get_tile_count(reference_cache),
             cache.getTileCount(),
         );
-        var prng: std.Random.DefaultPrng = .init(0x5a17);
+        var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x5a17));
         const random = prng.random();
         for (0..1000) |_| {
             const salt = random.int(u32);
@@ -1581,7 +1581,7 @@ test "init: too many tiles to leave ten bits of salt" {
 test "encodeTileId, decodeTileIdSalt, decodeTileIdTile: random parts over table sizes" {
     const gpa = testing.allocator;
     const seed: u64 = 0x71d5;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     for ([_]i32{ 1, 2, 5, 64, 4096 }) |tile_count_max| {
@@ -1626,7 +1626,7 @@ test "encodeTileId, decodeTileIdSalt, decodeTileIdTile: random parts over table 
 test "encodeObstacleId, decodeObstacleIdSalt, decodeObstacleIdObstacle: random parts" {
     const gpa = testing.allocator;
     const seed: u64 = 0x0b57;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var world: World = undefined;
@@ -1657,7 +1657,7 @@ test "encodeObstacleId, decodeObstacleIdSalt, decodeObstacleIdObstacle: random p
 test "addTile, getTilesAt, getTileAt, getTileRef, getTileByRef: every layer of the level" {
     const gpa = testing.allocator;
     const seed: u64 = 0x100c;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -1714,7 +1714,7 @@ test "addTile, getTilesAt, getTileAt, getTileRef, getTileByRef: every layer of t
 test "queryTiles: random boxes through buffers of several sizes" {
     const gpa = testing.allocator;
     const seed: u64 = 0x9e2b;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -1748,7 +1748,7 @@ test "queryTiles: random boxes through buffers of several sizes" {
 test "calcTightTileBounds: the level's headers and random ones" {
     const gpa = testing.allocator;
     const seed: u64 = 0x7167;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -1909,7 +1909,7 @@ test "addTile, removeTile: random headers in and out of a small table" {
     // the grids behind them are noise.
     const gpa = testing.allocator;
     const seed: u64 = 0x4ead;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -2232,7 +2232,7 @@ fn touchedTotal(world: *const World) usize {
 test "addObstacle, addBoxObstacle, addOrientedBoxObstacle, removeObstacle: each shape" {
     const gpa = testing.allocator;
     const seed: u64 = 0x0b5c;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 4);
@@ -2361,7 +2361,7 @@ test "addObstacle, update: more tiles than an obstacle can list, and none" {
 test "addObstacle, removeObstacle: a full request queue and a full table" {
     const gpa = testing.allocator;
     const seed: u64 = 0xf011;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -2425,7 +2425,7 @@ test "addObstacle, removeObstacle: a full request queue and a full table" {
 test "removeObstacle: while still waiting, twice, stale, past the table and forged" {
     const gpa = testing.allocator;
     const seed: u64 = 0x5a1e;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 0);
@@ -2592,7 +2592,7 @@ fn randomObstacleRef(world: *const World, random: std.Random) u32 {
 test "fuzz: tiles, builds, obstacles, updates and lookups in any order" {
     const gpa = testing.allocator;
     const seed: u64 = 0x7e57c0de;
-    var prng: std.Random.DefaultPrng = .init(seed);
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(seed));
     const random = prng.random();
 
     var fixture: Fixture = try .init(gpa, 6);
