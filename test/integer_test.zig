@@ -676,7 +676,7 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
     }
     try tally.expectEnough("findNearestPoly");
     // Few cases are decided by a polygon at the border: 11 to 22 of about
-    // 1600 over seeds 0 to 6. Ties: 0 to 2.
+    // 1600 stable cases over seeds 0 to 6. Ties: 0 to 2.
     try testing.expect(border_cases * 64 <= tally.stable);
     try testing.expect(ties <= 4);
     std.debug.print("findNearestPoly: {d} stable cases, {d} at the box's border " ++
@@ -876,9 +876,10 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
         }
     }
     try testing.expect(compared >= case_count_min);
-    // Over seeds 0 to 6, 48 to 97 polygons differ, in 31 to 41 of 1200 cases.
+    // Over seeds 0 to 6, 48 to 97 polygons differ, in 31 to 41 of up to
+    // 1200 cases.
     try testing.expect(border_cases * 24 <= compared);
-    try testing.expect(border_differences * 12 <= compared);
+    try testing.expect(border_differences * 10 <= compared);
     std.debug.print("queryPolygons: {d} cases, {d} polygons differ at the border " ++
         "(at most {d:.2} cells off), in {d} cases\n", .{
         compared,
@@ -1365,9 +1366,8 @@ fn shorterThroughCorridor(
 }
 
 /// Whether the float port's ray from `a` to `b` meets no wall. A ray that
-/// runs through a corner of the float path, which may lie a tolerance from
-/// the exact one, can stop on that vertex; the check then goes on from just
-/// past it.
+/// runs through a corner of the float path can stop on that vertex; the
+/// check then goes on from just past it, on the same floor.
 fn walkable(
     pair: *Pair,
     filter: *const detour.QueryFilter,
@@ -1400,7 +1400,7 @@ fn walkable(
         const corner: V = for (float_corners) |c| {
             const dx: f64 = @abs(c[0] - at[0]) * scale;
             const dz: f64 = @abs(c[2] - at[2]) * scale;
-            if (dx <= 2 * tolerance and dz <= 2 * tolerance) break c;
+            if (dx <= tolerance and dz <= tolerance) break c;
         } else return false;
         const rest = @as(V, b) - corner;
         const rest_length = @sqrt(rest[0] * rest[0] + rest[2] * rest[2]);
@@ -1408,7 +1408,8 @@ fn walkable(
         const past: [3]f32 = corner + @as(V, @splat(step_past / rest_length)) * rest;
         ref = 0;
         var point = past;
-        _ = pair.float_query.findNearestPoly(past, .{ 0.01, 4, 0.01 }, filter, &ref, &point, null);
+        const reach: [3]f32 = .{ 0.01, 0.5, 0.01 };
+        _ = pair.float_query.findNearestPoly(past, reach, filter, &ref, &point, null);
         if (ref == 0) return false;
         from = point;
     }

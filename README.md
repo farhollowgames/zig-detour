@@ -145,12 +145,16 @@ place.
 
 ## Testing and benchmarks
 
-365 tests, each run with every build switch off and with every one on. They
+368 tests, each run with every build switch off and with every one on. They
 compare every returned value and every byte written by the original and the
-port on the same inputs. The integer variant is held to the float port
-within the tolerances its design states. Port time divided by original
-time, on an AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against
-Clang 22.1.8 `-O3`:
+port on the same inputs. The integer variant is held to the float port within
+the tolerances its design states. RecastDemo's `undulating.obj` lies 5 km from
+the origin, where a float's own rounding is half a millimetre, so it is
+compared with the float port only after a move to near the origin; at its own
+place the integer variant is checked against itself. `-Dfuzz-seed=<n>` moves
+the seeded tests to other inputs. Port time divided by original time, on an
+AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
+`-O3`:
 
 | feature | port / original |
 | --- | ---: |

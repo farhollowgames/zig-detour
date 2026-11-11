@@ -53,7 +53,7 @@ query makes to a filter's own functions. Tiles damaged at random are refused
 by the port where the original would read or write outside them, and taken
 as the original takes them otherwise.
 
-The suite has 365 tests, and it runs twice: with every build switch off, and
+The suite has 368 tests, and it runs twice: with every build switch off, and
 with every one on (`-Dpolyref64`, `-Dvirtual-query-filter`, `-Dfast-math`).
 One test, of a filter's own functions, needs the virtual query filter and is
 skipped in the first run. Both sides are built with fused multiply-add off,
@@ -62,8 +62,28 @@ so float steps round as written. Where the original's behaviour is undefined
 the original does on x86-64 or refuses the input, the same on every machine;
 [`parity.md`](parity.md) lists each case.
 
-The seeds are fixed in each test. There is no `-Dfuzz-seed` option yet to
-offset them all at once.
+Each test has its own fixed seed. `zig build test -Dfuzz-seed=<n>` moves
+every seeded differential test to other inputs at once; `0`, the default,
+keeps the tests' own seeds. A few seeds stay fixed whatever the option: those
+paired with the original's own random number generator, the integer
+workload and the level it runs on (its hash is kept in the test), and the
+benchmark's inputs. Under seeds 1 to 6 every comparison with the original
+passes, in Debug and in ReleaseSafe. The integer comparisons then fail on a
+few cases per seed, each traced to a tolerance the tests do not yet apply,
+not to a wrong answer:
+
+- `findPath` with a partial result: the two sides stop at different nodes
+  equally near the end, so their corridors' costs are not comparable.
+- `findStraightPath`: an end clamped to the boundary where the float port has
+  a near tie between an edge and a vertex (3.6 mm); a portal end at a tile
+  border whose link limits differ by a 255th of the edge (up to 14 mm, which
+  the test of corners does not allow for); and a corner 2.1 mm off.
+- `raycast`: the cost of a grazing hit, about 10 mm off, where the cost's
+  tolerance lacks the 1/sine factor the hit point's has.
+- `moveAlongSurface`: the same end within 0.5 mm with a different list of
+  visited polygons, from a tie at a shared edge.
+- `findDistanceToWall`: one normal off by 0.016, from two walls at nearly
+  the same distance.
 
 Queries on separate `NavMeshQuery` values over one shared `NavMesh` give the
 same bytes on 1, 2 and many threads, the way the original documents its use
@@ -83,3 +103,20 @@ on. A fixed workload gives the same bytes twice, on 1, 2 and many threads,
 and a hash kept in the test, the same in Debug, ReleaseSafe and ReleaseFast.
 A test reads the integer source and finds no float type, float builtin or
 float literal in it.
+
+RecastDemo places `undulating.obj` about 5 km from the origin. There a
+32-bit float steps in about half a millimetre, so the float port's own
+rounding would take up a quarter of the 2 mm tolerance before any query
+runs. The comparisons therefore use the level moved 5 km nearer the origin.
+At its own place the integer variant is checked against itself instead: the
+same hash on a second run and on another thread, every query succeeding, and
+the answers holding what each query promises (points on their polygons,
+straight paths through every portal of their corridor, wall points at the
+distance given).
+
+Where the two sides may differ (a polygon at the border of a query box, two
+polygons or walls equally near, a corner at a vertex several portals share,
+a float path that takes a longer way), each test counts the cases and holds
+the count to a limit just above what it measures over seeds 0 to 6 (read
+with the failing cases listed above set aside); the measured values are
+written beside the limits in `test/integer_test.zig`.
