@@ -307,6 +307,11 @@ pub const LevelOptions = struct {
     vary_polygons: bool = false,
     build_bv_tree: bool = true,
     seed: u64 = 1,
+    /// When not zero, the tiles whose x + y is odd are built with cells of
+    /// this size, as many as cover the same width, so their border edges
+    /// end at other places than their neighbours': a polygon then meets
+    /// several across one edge, and links cover part of an edge.
+    odd_tile_cell_size: f32 = 0,
 };
 
 /// A triangle mesh with the settings its navigation mesh is built with.
@@ -413,13 +418,20 @@ pub const Level = struct {
     /// Runs Recast on tile (`x`, `y`) and readies what both builders take.
     /// Null for a tile with no ground. Free with `TileInput.deinit`.
     pub fn tileInput(self: *const Level, x: i32, y: i32) !?TileInput {
+        var config = self.config;
+        const odd_cell_size = self.options.odd_tile_cell_size;
+        if (odd_cell_size != 0 and config.tile_size > 0 and @mod(x + y, 2) == 1) {
+            const width = @as(f32, @floatFromInt(config.tile_size)) * config.cell_size;
+            config.tile_size = @intFromFloat(@round(width / odd_cell_size));
+            config.cell_size = odd_cell_size;
+        }
         var recast: RecastTile = undefined;
         if (!reference_recast.ref_recast_build_tile(
             self.mesh.verts.ptr,
             self.mesh.vertexCount(),
             self.mesh.tris.ptr,
             self.mesh.triangleCount(),
-            &self.config,
+            &config,
             &self.mesh.bounds_min,
             &self.mesh.bounds_max,
             x,

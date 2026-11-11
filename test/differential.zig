@@ -14,6 +14,16 @@ comptime {
     _ = @import("determinism_test.zig");
     _ = @import("tile_cache_test.zig");
     _ = @import("proximity_grid_test.zig");
+    _ = @import("obstacle_avoidance_test.zig");
+    _ = @import("query_point_test.zig");
+    _ = @import("node_test.zig");
+    _ = @import("query_filter_test.zig");
+    _ = @import("query_area_test.zig");
+    _ = @import("query_path_test.zig");
+    _ = @import("local_boundary_test.zig");
+    _ = @import("path_corridor_test.zig");
+    _ = @import("tile_cache_builder_test.zig");
+    _ = @import("crowd_test.zig");
 }
 
 /// Takes the address of every public function under `T`, so the compiler

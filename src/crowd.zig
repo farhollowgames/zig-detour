@@ -734,8 +734,10 @@ pub const Crowd = struct {
         return true;
     }
 
-    /// Frees everything `init` allocated and leaves the crowd without
-    /// memory or agents, its filters and avoidance configurations kept.
+    /// Frees everything `init` allocated but the path queue and leaves the
+    /// crowd without agents, its filters and avoidance configurations kept.
+    /// The path queue frees its own memory when `init` readies it again,
+    /// and keeps counting its request handles on from where it was.
     fn purge(self: *Crowd, gpa: std.mem.Allocator) void {
         for (self.agents) |*ag| ag.corridor.deinit(gpa);
         gpa.free(self.agents);
@@ -768,15 +770,13 @@ pub const Crowd = struct {
             gpa.destroy(nav_query);
         }
         self.nav_query = null;
-
-        self.path_queue.deinit(gpa);
-        self.path_queue = .empty;
     }
 
     /// Frees the crowd's memory. `gpa` is the allocator `init` was given.
     /// Every pointer the crowd handed out ends with it.
     pub fn deinit(self: *Crowd, gpa: std.mem.Allocator) void {
         self.purge(gpa);
+        self.path_queue.deinit(gpa);
         self.* = undefined;
     }
 

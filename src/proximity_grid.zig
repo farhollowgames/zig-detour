@@ -119,8 +119,8 @@ pub const ProximityGrid = struct {
     /// `y_min`..`y_max` touches, one pool entry per cell. Once the pool is
     /// full the remaining cells are left out without notice.
     ///
-    /// A coordinate too large for a cell number is taken as the farthest
-    /// cell on its side, and a NaN as cell 0.
+    /// A coordinate too large for a cell number, and a NaN, become the
+    /// lowest cell number there is, as `common.truncToInt` gives.
     pub fn addItem(
         self: *ProximityGrid,
         id: u16,

@@ -485,6 +485,12 @@ const world_cases = [_]WorldCase{
         .config = support.solo_config,
         .options = .{ .seed = 14 },
     },
+    .{
+        .name = "nav_test, tiled, two cell sizes",
+        .obj_text = support.nav_test_obj,
+        .config = support.tiled_config,
+        .options = .{ .off_mesh_connection_count = 12, .seed = 15, .odd_tile_cell_size = 0.2 },
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -1487,4 +1493,597 @@ test "restoreTileState: corrupted and truncated states" {
     try testing.expect(restored > 100);
     try testing.expect(refused > 100);
     try expectSameMeshes(expected_nav, nav);
+}
+
+// ---------------------------------------------------------------------------
+// Damaged tiles
+// ---------------------------------------------------------------------------
+
+const nm = detour.nav_mesh;
+
+/// Where each block of a tile blob starts, by its header's counts.
+const BlobLayout = struct {
+    verts: usize,
+    polys: usize,
+    links: usize,
+    detail_meshes: usize,
+    detail_verts: usize,
+    detail_tris: usize,
+    bv_tree: usize,
+    off_mesh_connections: usize,
+    end: usize,
+
+    fn of(header: *align(1) const detour.MeshHeader) BlobLayout {
+        const align4 = detour.common.align4;
+        const count = struct {
+            fn of(n: i32) usize {
+                return @intCast(n);
+            }
+        }.of;
+        var layout: BlobLayout = undefined;
+        layout.verts = align4(@sizeOf(detour.MeshHeader));
+        layout.polys = layout.verts + align4(12 * count(header.vert_count));
+        layout.links = layout.polys + align4(@sizeOf(Poly) * count(header.poly_count));
+        layout.detail_meshes = layout.links +
+            align4(@sizeOf(nm.Link) * count(header.link_count_max));
+        layout.detail_verts = layout.detail_meshes +
+            align4(@sizeOf(nm.PolyDetail) * count(header.detail_mesh_count));
+        layout.detail_tris = layout.detail_verts + align4(12 * count(header.detail_vert_count));
+        layout.bv_tree = layout.detail_tris + align4(4 * count(header.detail_tri_count));
+        layout.off_mesh_connections = layout.bv_tree +
+            align4(@sizeOf(nm.BvNode) * count(header.bv_node_count));
+        layout.end = layout.off_mesh_connections +
+            align4(@sizeOf(nm.OffMeshConnection) * count(header.off_mesh_connection_count));
+        return layout;
+    }
+};
+
+/// The records of one block of a tile blob, at any address.
+fn blobRecords(comptime T: type, blob: []u8, offset: usize, count: i32) []align(1) T {
+    const records: [*]align(1) T = @ptrCast(blob.ptr + offset);
+    return records[0..@intCast(count)];
+}
+
+/// Whether a coordinate is one the two sides compute alike: finite, and
+/// small enough that no product of the library overflows to a NaN, whose
+/// bits are the compiler's choice.
+fn isTame(x: f32) bool {
+    return std.math.isFinite(x) and @abs(x) <= 1.0e6;
+}
+
+fn areTame(floats: []align(1) const f32) bool {
+    for (floats) |x| {
+        if (!isTame(x)) return false;
+    }
+    return true;
+}
+
+/// Whether the original may be given a damaged tile the port accepted. The
+/// port's checks have kept every index inside the tile; what is left are
+/// the tiles on which the original still reads memory it never wrote, or
+/// through a null pointer:
+/// - without room for a link, it writes before the link block;
+/// - on a border edge whose side is not one of the four, it compares slabs
+///   it never filled;
+/// - on a polygon without a boundary edge in its detail mesh, the closest
+///   point is read through a null pointer;
+/// - and coordinates that are not tame end in NaNs.
+fn originalTakes(blob: []u8) bool {
+    const header: *align(1) const detour.MeshHeader = @ptrCast(blob.ptr);
+    if (header.link_count_max < 1) return false;
+    if (!isTameTile(blob)) return false;
+    const layout: BlobLayout = .of(header);
+
+    const polys = blobRecords(Poly, blob, layout.polys, header.poly_count);
+    const details =
+        blobRecords(nm.PolyDetail, blob, layout.detail_meshes, header.detail_mesh_count);
+    const tris = blobRecords([4]u8, blob, layout.detail_tris, header.detail_tri_count);
+    for (polys, 0..) |poly, i| {
+        for (poly.neighbours[0..poly.vert_count]) |neighbour| {
+            if ((neighbour & nm.ext_link) == 0) continue;
+            switch (neighbour & 0xff) {
+                0, 2, 4, 6 => {},
+                else => return false,
+            }
+        }
+        if (poly.getType() == .off_mesh_connection) continue;
+        const detail = details[i];
+        const boundary: u8 = 0b010101;
+        for (tris[detail.tri_base..][0..detail.tri_count]) |tri| {
+            if ((tri[3] & boundary) != 0) break;
+        } else return false;
+    }
+    return true;
+}
+
+/// Whether every coordinate of a tile the port took is tame. On one that
+/// is not, the funnel and the walks go round for ever on NaNs, in the
+/// original as in the port.
+fn isTameTile(blob: []u8) bool {
+    const header: *align(1) const detour.MeshHeader = @ptrCast(blob.ptr);
+    const layout: BlobLayout = .of(header);
+
+    const header_floats: [*]align(1) const f32 = @ptrCast(&header.walkable_height);
+    if (!areTame(header_floats[0..10])) return false;
+    if (!areTame(blobRecords(f32, blob, layout.verts, header.vert_count * 3))) return false;
+    if (!areTame(blobRecords(f32, blob, layout.detail_verts, header.detail_vert_count * 3))) {
+        return false;
+    }
+    const connections = blobRecords(
+        nm.OffMeshConnection,
+        blob,
+        layout.off_mesh_connections,
+        header.off_mesh_connection_count,
+    );
+    for (connections) |connection| {
+        const floats: [*]align(1) const f32 = @ptrCast(&connection);
+        if (!areTame(floats[0..7])) return false;
+    }
+    return true;
+}
+
+/// A count near `count`, or one no tile has.
+fn oddCount(random: std.Random, count: i32) i32 {
+    return switch (random.uintLessThan(u8, 9)) {
+        0 => 0,
+        1 => 1,
+        2 => count - 1,
+        3 => count + 1,
+        4 => count * 2,
+        5 => -1,
+        6 => std.math.maxInt(i32),
+        7 => std.math.minInt(i32),
+        else => random.intRangeAtMost(i32, 0, count + 4),
+    };
+}
+
+/// An index into `count` records: the last, the first past the end, far
+/// past it, or another record than the right one.
+fn oddIndex(random: std.Random, count: i32) u32 {
+    const n: u32 = @intCast(count);
+    return switch (random.uintLessThan(u8, 7)) {
+        0 => n -| 1,
+        1 => n,
+        2 => n + 1,
+        3 => 0xffff,
+        4 => 0xffffffff,
+        5 => random.int(u16),
+        else => random.uintLessThan(u32, n + 1),
+    };
+}
+
+/// A float no tile holds: not a number, infinite, huge, or any bits.
+fn wildFloat(random: std.Random) f32 {
+    return switch (random.uintLessThan(u8, 8)) {
+        0 => std.math.nan(f32),
+        1 => std.math.inf(f32),
+        2 => -std.math.inf(f32),
+        3 => 1.0e30,
+        4 => -1.0e30,
+        5 => std.math.floatMax(f32),
+        6 => std.math.floatTrueMin(f32),
+        else => @bitCast(random.int(u32)),
+    };
+}
+
+/// Flips some bits of a few bytes anywhere in the blob.
+fn flipBytes(blob: []u8, random: std.Random) void {
+    for (0..random.intRangeAtMost(usize, 1, 4)) |_| {
+        blob[random.uintLessThan(usize, blob.len)] ^= random.int(u8) | 1;
+    }
+}
+
+/// Damages a tile blob as a broken file might, or a hostile one: a count,
+/// an index, a record, a whole block, the coordinates, or its length.
+/// Returns the length to hand over, the blob's or less.
+fn damageTile(blob: []u8, random: std.Random) usize {
+    const header: *align(1) detour.MeshHeader = @ptrCast(blob.ptr);
+    const layout: BlobLayout = .of(header);
+    const poly_count = header.poly_count;
+    const vert_count = header.vert_count;
+    const polys = blobRecords(Poly, blob, layout.polys, poly_count);
+    const verts = blobRecords(f32, blob, layout.verts, vert_count * 3);
+    const details =
+        blobRecords(nm.PolyDetail, blob, layout.detail_meshes, header.detail_mesh_count);
+    const detail_verts = blobRecords(f32, blob, layout.detail_verts, header.detail_vert_count * 3);
+    const tris = blobRecords([4]u8, blob, layout.detail_tris, header.detail_tri_count);
+    const nodes = blobRecords(nm.BvNode, blob, layout.bv_tree, header.bv_node_count);
+    const connections = blobRecords(
+        nm.OffMeshConnection,
+        blob,
+        layout.off_mesh_connections,
+        header.off_mesh_connection_count,
+    );
+    const poly = &polys[random.uintLessThan(usize, polys.len)];
+    const edge = random.uintLessThan(usize, nm.verts_per_polygon);
+
+    switch (random.uintLessThan(u8, 14)) {
+        0 => flipBytes(blob, random),
+        1 => {
+            const counts: [*]align(1) i32 = @ptrCast(&header.poly_count);
+            const which = random.uintLessThan(usize, 8);
+            counts[which] = oddCount(random, counts[which]);
+        },
+        2 => poly.verts[edge] = @truncate(oddIndex(random, vert_count)),
+        3 => poly.neighbours[edge] = switch (random.uintLessThan(u8, 5)) {
+            0 => @truncate(oddIndex(random, poly_count + 1)),
+            1 => nm.ext_link | random.int(u8),
+            2 => nm.ext_link | (@as(u16, random.uintLessThan(u8, 4)) * 2),
+            3 => 0,
+            else => random.int(u16),
+        },
+        4 => if (random.boolean()) {
+            poly.vert_count = switch (random.uintLessThan(u8, 4)) {
+                0 => random.uintLessThan(u8, 3),
+                1 => random.intRangeAtMost(u8, 3, 6),
+                2 => 7,
+                else => random.int(u8),
+            };
+        } else {
+            poly.area_and_type = random.int(u8);
+        },
+        5 => if (details.len == 0) flipBytes(blob, random) else {
+            const detail = &details[random.uintLessThan(usize, details.len)];
+            switch (random.uintLessThan(u8, 4)) {
+                0 => detail.vert_base = oddIndex(random, header.detail_vert_count),
+                1 => detail.tri_base = oddIndex(random, header.detail_tri_count),
+                2 => detail.vert_count = random.int(u8),
+                else => detail.tri_count = if (random.boolean()) 0 else random.int(u8),
+            }
+        },
+        6 => if (tris.len == 0) flipBytes(blob, random) else {
+            const tri = &tris[random.uintLessThan(usize, tris.len)];
+            if (random.boolean()) {
+                tri[random.uintLessThan(usize, 3)] = switch (random.uintLessThan(u8, 3)) {
+                    0 => random.uintLessThan(u8, 8),
+                    1 => 255,
+                    else => random.int(u8),
+                };
+            } else {
+                tri[3] = if (random.boolean()) 0 else random.int(u8);
+            }
+        },
+        7 => if (nodes.len == 0) flipBytes(blob, random) else {
+            const node = &nodes[random.uintLessThan(usize, nodes.len)];
+            switch (random.uintLessThan(u8, 8)) {
+                0 => node.index = poly_count,
+                1 => node.index = poly_count - 1,
+                2 => node.index = -1,
+                3 => node.index = -header.bv_node_count,
+                4 => node.index = std.math.minInt(i32),
+                5 => node.index = std.math.maxInt(i32),
+                6 => node.index = random.int(i32),
+                else => random.bytes(std.mem.asBytes(node)[0..12]),
+            }
+        },
+        8 => if (connections.len == 0) flipBytes(blob, random) else {
+            const connection = &connections[random.uintLessThan(usize, connections.len)];
+            switch (random.uintLessThan(u8, 5)) {
+                0 => connection.poly = @truncate(oddIndex(random, poly_count)),
+                1 => connection.side = random.int(u8),
+                2 => connection.flags = random.int(u8),
+                3 => connection.radius = random.float(f32) * 8.0 - 1.0,
+                else => {
+                    const end = random.uintLessThan(usize, 2);
+                    const axis = random.uintLessThan(usize, 3);
+                    connection.pos[end][axis] += random.float(f32) * 8.0 - 4.0;
+                },
+            }
+        },
+        9 => {
+            const starts = [_]usize{
+                layout.verts,         layout.polys,                layout.links,
+                layout.detail_meshes, layout.detail_verts,         layout.detail_tris,
+                layout.bv_tree,       layout.off_mesh_connections, layout.end,
+            };
+            const block = random.uintLessThan(usize, starts.len - 1);
+            random.bytes(blob[starts[block]..starts[block + 1]]);
+        },
+        10 => return switch (random.uintLessThan(u8, 6)) {
+            0 => 0,
+            1 => @sizeOf(detour.MeshHeader) - 1,
+            2 => blob.len - 1,
+            3 => layout.off_mesh_connections -| 1,
+            4 => layout.detail_meshes + 1,
+            else => random.uintLessThan(usize, blob.len),
+        },
+        11 => for (0..random.intRangeAtMost(usize, 1, 3)) |_| {
+            const coords = if (detail_verts.len > 0 and random.boolean()) detail_verts else verts;
+            const axis = random.uintLessThan(usize, 3);
+            const low = header.bounds_min[axis] - 2.0;
+            const high = header.bounds_max[axis] + 2.0;
+            const index = random.uintLessThan(usize, coords.len / 3) * 3 + axis;
+            coords[index] = low + (high - low) * random.float(f32);
+        },
+        12 => switch (random.uintLessThan(u8, 7)) {
+            0 => header.x +%= random.intRangeAtMost(i32, -2, 2),
+            1 => header.y +%= random.intRangeAtMost(i32, -2, 2),
+            2 => header.layer = random.intRangeAtMost(i32, -1, 3),
+            3 => header.user_id = random.int(u32),
+            4 => header.off_mesh_base = @bitCast(oddIndex(random, poly_count)),
+            5 => {
+                const floats: [*]align(1) f32 = @ptrCast(&header.walkable_height);
+                floats[random.uintLessThan(usize, 10)] = random.float(f32) * 40.0 - 10.0;
+            },
+            else => {
+                const floats: [*]align(1) f32 = @ptrCast(&header.walkable_height);
+                floats[random.uintLessThan(usize, 10)] = wildFloat(random);
+            },
+        },
+        else => for (0..random.intRangeAtMost(usize, 1, 3)) |_| {
+            const coords = if (detail_verts.len > 0 and random.boolean()) detail_verts else verts;
+            coords[random.uintLessThan(usize, coords.len)] = wildFloat(random);
+        },
+    }
+    return blob.len;
+}
+
+/// Runs every kind of query on the port's mesh, from and to the polygons of
+/// `tile` as often as not. Nothing is compared: the queries must return.
+/// `follow_rays` leaves the ray casts in, which walk from polygon to
+/// polygon for as long as the links lead on.
+fn exerciseQueries(
+    gpa: std.mem.Allocator,
+    level: *const support.Level,
+    nav: *const NavMesh,
+    tile: *const MeshTile,
+    random: std.Random,
+    follow_rays: bool,
+) !void {
+    var query: detour.NavMeshQuery = .empty;
+    try testing.expect(query.init(gpa, nav, 64).succeeded);
+    defer query.deinit(gpa);
+    const filter: detour.QueryFilter = .{};
+
+    var refs: [48]PolyRef = undefined;
+    var parents: [48]PolyRef = undefined;
+    var costs: [48]f32 = undefined;
+    var path: [48]PolyRef = undefined;
+    var count: usize = 0;
+    var point: [3]f32 = undefined;
+    var over: bool = false;
+    var ref: PolyRef = 0;
+
+    for (0..10) |_| {
+        const base = nav.getPolyRefBase(tile);
+        const in_tile = base | random.uintLessThan(PolyRef, @intCast(tile.polys.len));
+        const start_ref = if (random.boolean()) in_tile else randomPolygon(nav, random);
+        const end_ref = if (random.boolean()) in_tile else randomPolygon(nav, random);
+        const start_tile = nav.getTileAndPolyByRefUnsafe(start_ref).tile;
+        const start_pos = if (random.boolean())
+            level.groundPoint(random, 2.0)
+        else
+            start_tile.verts[random.uintLessThan(usize, start_tile.verts.len)];
+        const end_pos = level.groundPoint(random, 2.0);
+        const radius = random.float(f32) * 12.0;
+        const half_extents: [3]f32 = .{ radius, 4.0, radius };
+
+        _ = query.closestPointOnPoly(start_ref, start_pos, &point, &over);
+        _ = query.closestPointOnPolyBoundary(start_ref, start_pos, &point);
+        var height: f32 = 0;
+        _ = query.getPolyHeight(start_ref, start_pos, &height);
+        _ = query.findNearestPoly(start_pos, half_extents, &filter, &ref, &point, &over);
+        _ = query.queryPolygons(start_pos, half_extents, &filter, &refs, &count);
+
+        _ = query.findPath(start_ref, end_ref, start_pos, end_pos, &filter, &path, &count);
+        if (count > 0) {
+            var corners: [16][3]f32 = undefined;
+            var corner_flags: [16]detour.StraightPathFlags = undefined;
+            var corner_refs: [16]PolyRef = undefined;
+            var corner_count: usize = 0;
+            _ = query.findStraightPath(
+                start_pos,
+                end_pos,
+                path[0..count],
+                &corners,
+                &corner_flags,
+                &corner_refs,
+                &corner_count,
+                .{ .all_crossings = random.boolean() },
+            );
+        }
+        const any_angle = follow_rays and random.boolean();
+        const sliced = query.initSlicedFindPath(
+            start_ref,
+            end_ref,
+            start_pos,
+            end_pos,
+            &filter,
+            .{ .any_angle = any_angle },
+        );
+        if (sliced.succeeded or sliced.in_progress) {
+            _ = query.updateSlicedFindPath(200, null);
+            _ = query.finalizeSlicedFindPath(&path, &count);
+        }
+
+        _ = query.moveAlongSurface(start_ref, start_pos, end_pos, &filter, &point, &refs, &count);
+        _ = query.findPolysAroundCircle(
+            start_ref,
+            start_pos,
+            radius,
+            &filter,
+            &refs,
+            &parents,
+            &costs,
+            &count,
+            refs.len,
+        );
+        _ = query.getPathFromDijkstraSearch(end_ref, &path, &count);
+        const shape = [_][3]f32{
+            .{ start_pos[0] - radius, start_pos[1], start_pos[2] - radius },
+            .{ start_pos[0] + radius, start_pos[1], start_pos[2] - radius },
+            .{ start_pos[0] + radius, start_pos[1], start_pos[2] + radius },
+            .{ start_pos[0] - radius, start_pos[1], start_pos[2] + radius },
+        };
+        _ = query.findPolysAroundShape(
+            start_ref,
+            &shape,
+            &filter,
+            &refs,
+            &parents,
+            &costs,
+            &count,
+            refs.len,
+        );
+        _ = query.findLocalNeighbourhood(
+            start_ref,
+            start_pos,
+            radius,
+            &filter,
+            refs[0..16],
+            parents[0..16],
+            &count,
+        );
+        var segments: [24][2][3]f32 = undefined;
+        _ = query.getPolyWallSegments(start_ref, &filter, &segments, refs[0..24], &count);
+        var distance: f32 = 0;
+        var normal: [3]f32 = undefined;
+        _ = query.findDistanceToWall(
+            start_ref,
+            start_pos,
+            radius,
+            &filter,
+            &distance,
+            &point,
+            &normal,
+        );
+        _ = query.findRandomPoint(&filter, random, &ref, &point);
+        _ = query.findRandomPointAroundCircle(
+            start_ref,
+            start_pos,
+            radius,
+            &filter,
+            random,
+            &ref,
+            &point,
+        );
+        var end_points: [2][3]f32 = undefined;
+        _ = nav.getOffMeshConnectionPolyEndPoints(0, start_ref, &end_points[0], &end_points[1]);
+        _ = nav.getOffMeshConnectionByRef(start_ref);
+
+        if (follow_rays) {
+            var hit: detour.RaycastHit = undefined;
+            hit.path = &path;
+            _ = query.raycast(
+                start_ref,
+                start_pos,
+                end_pos,
+                &filter,
+                .{ .use_costs = random.boolean() },
+                &hit,
+                0,
+            );
+        }
+    }
+}
+
+/// Whether the original turns `blob` down on its header alone, before it
+/// reads a block: a wrong magic number or version, more polygons than a
+/// reference's polygon bits hold, or a place `nav` already has a tile at.
+fn originalStopsAtHeader(nav: *const NavMesh, blob: []const u8) bool {
+    if (blob.len < @sizeOf(detour.MeshHeader)) return false;
+    const header: *align(1) const detour.MeshHeader = @ptrCast(blob.ptr);
+    if (header.magic != nm.nav_mesh_magic or header.version != nm.nav_mesh_version) return true;
+    if (!nm.polyref64) {
+        const poly_count: u32 = @bitCast(header.poly_count);
+        const poly_bits = detour.common.ilog2(detour.common.nextPow2(poly_count));
+        if (nav.poly_bits < poly_bits) return true;
+    }
+    return nav.getTileAt(header.x, header.y, header.layer) != null;
+}
+
+test "addTile: damaged tiles are refused, or taken as the original takes them" {
+    const gpa = testing.allocator;
+    const seed: u64 = 0x64616d61676564;
+    var prng: std.Random.DefaultPrng = .init(seed);
+    const random = prng.random();
+
+    const cases_per_world = 700;
+    var refused: usize = 0;
+    var compared: usize = 0;
+    var port_only: usize = 0;
+    var queried: usize = 0;
+    for ([_]usize{ 1, 2 }) |world_index| {
+        const world_case = world_cases[world_index];
+        errdefer std.debug.print("  in world \"{s}\"\n", .{world_case.name});
+        var level: support.Level =
+            try .init(gpa, world_case.obj_text, world_case.config, world_case.options);
+        defer level.deinit();
+        var blobs: TileBlobs = try .init(gpa, &level);
+        defer blobs.deinit();
+        const params = level.navMeshParams();
+
+        for (0..cases_per_world) |case| {
+            errdefer std.debug.print("  seed {d}, case {d}\n", .{ seed, case });
+            var pair: Pair = undefined;
+            try testing.expect(try pair.init(gpa, params));
+            defer pair.deinit();
+
+            // Half the time a sound neighbour is there first, for the
+            // damaged tile to link with or to collide with.
+            const blob_index = random.uintLessThan(usize, blobs.items.items.len);
+            if (random.boolean()) {
+                const other = random.uintLessThan(usize, blobs.items.items.len);
+                if (other != blob_index) {
+                    const added = try pair.add(blobs.items.items[other], .{}, 0, null);
+                    try testing.expect(added.succeeded);
+                }
+            }
+
+            const damaged = try gpa.alignedAlloc(u8, .@"4", blobs.items.items[blob_index].len);
+            try pair.kept.append(gpa, damaged);
+            @memcpy(damaged, blobs.items.items[blob_index]);
+            const len = damageTile(damaged, random);
+            const bytes = damaged[0..len];
+            const ask_original = originalStopsAtHeader(&pair.nav, bytes);
+
+            var actual_ref: TileRef = 0xdead;
+            const actual = pair.nav.addTile(bytes, .{}, 0, &actual_ref);
+            if (actual.failed) refused += 1;
+
+            if (ask_original or (actual.succeeded and originalTakes(bytes))) {
+                const allocation = reference.ref_alloc(@max(len, 1), .perm) orelse
+                    return error.OutOfMemory;
+                const original_copy: [*]u8 = @ptrCast(allocation);
+                try pair.reference_kept.append(gpa, original_copy);
+                @memcpy(original_copy[0..len], bytes);
+                var expected_ref: TileRef = 0xdead;
+                const expected = reference.ref_nav_mesh_add_tile(
+                    pair.reference_nav,
+                    original_copy,
+                    @intCast(len),
+                    0,
+                    0,
+                    &expected_ref,
+                );
+                try support.expectStatus(expected, actual);
+                try testing.expectEqual(expected_ref, actual_ref);
+                try expectSameMeshes(pair.reference_nav, &pair.nav);
+                compared += 1;
+            } else if (actual.succeeded) {
+                port_only += 1;
+            }
+
+            // Whatever the port took with tame coordinates, its queries
+            // must take too, without reading outside the tile. Ray casts
+            // stay out: on a damaged tile they may walk between two
+            // polygons for ever, as the original's do.
+            if (actual.succeeded and isTameTile(bytes)) {
+                const tile = pair.nav.getTileByRef(actual_ref).?;
+                if (tile.polys.len > 0) {
+                    try exerciseQueries(gpa, &level, &pair.nav, tile, random, false);
+                    queried += 1;
+                }
+            }
+        }
+    }
+    // Each way through is taken often.
+    errdefer std.debug.print(
+        "  {d} refused, {d} compared, {d} taken by the port alone, {d} queried\n",
+        .{ refused, compared, port_only, queried },
+    );
+    try testing.expect(queried > 200);
+    try testing.expect(refused > 200);
+    try testing.expect(compared > 200);
+    try testing.expect(port_only > 50);
 }

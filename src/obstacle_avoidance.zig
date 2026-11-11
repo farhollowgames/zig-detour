@@ -701,8 +701,10 @@ pub const ObstacleAvoidanceQuery = struct {
     /// candidates each plus the centre, aligned to the desired velocity.
     /// The pattern is tried `params.adaptive_depth` times, each time at
     /// half the size around the best candidate of the time before. Writes
-    /// the last best candidate to `nvel`, zero when the last pattern scored
-    /// none or the depth is 0, and returns how many candidates were scored.
+    /// the last best candidate to `nvel` and returns how many candidates
+    /// were scored. When the last pattern scored none, `nvel` is zero; with
+    /// a depth of 0 it is the desired velocity scaled by `params.vel_bias`,
+    /// with no height.
     ///
     /// With an even `params.adaptive_divisions`, each ring's last candidate
     /// is the pattern's centre instead of the point opposite the ring's

@@ -21,20 +21,20 @@ original, and why.
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Detour | DetourNavMesh.h | `src/nav_mesh.zig` | 69 |  |  | 69 |  |  |
 | Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  |  | 4 |  |  |
-| Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  | 44 | 1 |  |  |
-| Detour | DetourNode.h | `src/node.zig` | 33 |  | 33 |  |  |  |
+| Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  |  | 45 |  |  |
+| Detour | DetourNode.h | `src/node.zig` | 33 |  | 1 | 32 |  |  |
 | Detour | DetourCommon.h | `src/common.zig` | 44 |  |  | 44 |  |  |
 | Detour | DetourStatus.h | `src/status.zig` | 17 |  |  | 17 |  |  |
 | Detour | DetourMath.h | `src/common.zig` | 1 |  |  | 1 |  |  |
-| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  | 37 |  |  |  |
-| DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  | 24 |  |  |  |
+| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  | 9 | 28 |  |  |
+| DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  |  | 24 |  |  |
 | DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  | 11 |  |  |  |
-| DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  | 8 |  |  |  |
-| DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  | 33 |  |  |  |
+| DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  |  | 8 |  |  |
+| DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  |  | 33 |  |  |
 | DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 10 |  |  |
 | DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 49 |  |  |
-| DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  | 30 |  |  |  |
-| | | **all** | 415 |  | 220 | 195 |  |  |
+| DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  | 5 | 25 |  |  |
+| | | **all** | 415 |  | 26 | 389 |  |  |
 
 The differential tests run twice: with every build switch off, and with every one on.
 
@@ -155,89 +155,89 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtQueryFilter` | `QueryFilter` | ported |
-| `dtQueryFilter::dtQueryFilter` | `QueryFilter`, its default field values | ported |
-| `dtQueryFilter::passFilter` | `QueryFilter.passFilter` | ported |
-| `dtQueryFilter::getCost` | `QueryFilter.getCost` | ported |
-| `dtQueryFilter::getAreaCost` | `QueryFilter`, the `area_cost` field | ported |
-| `dtQueryFilter::setAreaCost` | `QueryFilter`, the `area_cost` field | ported |
-| `dtQueryFilter::getIncludeFlags` | `QueryFilter`, the `include_flags` field | ported |
-| `dtQueryFilter::setIncludeFlags` | `QueryFilter`, the `include_flags` field | ported |
-| `dtQueryFilter::getExcludeFlags` | `QueryFilter`, the `exclude_flags` field | ported |
-| `dtQueryFilter::setExcludeFlags` | `QueryFilter`, the `exclude_flags` field | ported |
+| `dtQueryFilter` | `QueryFilter` | oracle-tested |
+| `dtQueryFilter::dtQueryFilter` | `QueryFilter`, its default field values | oracle-tested |
+| `dtQueryFilter::passFilter` | `QueryFilter.passFilter` | oracle-tested |
+| `dtQueryFilter::getCost` | `QueryFilter.getCost` | oracle-tested |
+| `dtQueryFilter::getAreaCost` | `QueryFilter`, the `area_cost` field | oracle-tested |
+| `dtQueryFilter::setAreaCost` | `QueryFilter`, the `area_cost` field | oracle-tested |
+| `dtQueryFilter::getIncludeFlags` | `QueryFilter`, the `include_flags` field | oracle-tested |
+| `dtQueryFilter::setIncludeFlags` | `QueryFilter`, the `include_flags` field | oracle-tested |
+| `dtQueryFilter::getExcludeFlags` | `QueryFilter`, the `exclude_flags` field | oracle-tested |
+| `dtQueryFilter::setExcludeFlags` | `QueryFilter`, the `exclude_flags` field | oracle-tested |
 | `dtRaycastHit`: `t`, `hitNormal`, `hitEdgeIndex`, `path`, `pathCount`, `maxPath`, `pathCost` | `RaycastHit` | oracle-tested |
-| `dtPolyQuery` | `PolyQuery` | ported |
-| `dtPolyQuery::process` | `PolyQuery.process` | ported |
-| `dtNavMeshQuery` | `NavMeshQuery` | ported |
-| `dtNavMeshQuery::dtNavMeshQuery` | `NavMeshQuery.empty` | ported |
-| `dtNavMeshQuery::~dtNavMeshQuery` | `NavMeshQuery.deinit` | ported |
-| `dtNavMeshQuery::init` | `NavMeshQuery.init` | ported |
-| `dtNavMeshQuery::findPath` | `NavMeshQuery.findPath` | ported |
-| `dtNavMeshQuery::findStraightPath` | `NavMeshQuery.findStraightPath` | ported |
-| `dtNavMeshQuery::initSlicedFindPath` | `NavMeshQuery.initSlicedFindPath` | ported |
-| `dtNavMeshQuery::updateSlicedFindPath` | `NavMeshQuery.updateSlicedFindPath` | ported |
-| `dtNavMeshQuery::finalizeSlicedFindPath` | `NavMeshQuery.finalizeSlicedFindPath` | ported |
-| `dtNavMeshQuery::finalizeSlicedFindPathPartial` | `NavMeshQuery.finalizeSlicedFindPathPartial` | ported |
-| `dtNavMeshQuery::findPolysAroundCircle` | `NavMeshQuery.findPolysAroundCircle` | ported |
-| `dtNavMeshQuery::findPolysAroundShape` | `NavMeshQuery.findPolysAroundShape` | ported |
-| `dtNavMeshQuery::getPathFromDijkstraSearch` | `NavMeshQuery.getPathFromDijkstraSearch` | ported |
-| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt)` | `NavMeshQuery.findNearestPoly`, `is_over_poly` null | ported |
-| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt, isOverPoly)` | `NavMeshQuery.findNearestPoly` | ported |
-| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, polys, polyCount, maxPolys)` | `NavMeshQuery.queryPolygons` | ported |
-| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, query)` | `NavMeshQuery.queryPolygonsWith` | ported |
-| `dtNavMeshQuery::findLocalNeighbourhood` | `NavMeshQuery.findLocalNeighbourhood` | ported |
-| `dtNavMeshQuery::moveAlongSurface` | `NavMeshQuery.moveAlongSurface` | ported |
-| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, t, hitNormal, path, pathCount, maxPath)` | `NavMeshQuery.raycastPath` | ported |
-| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, options, hit, prevRef)` | `NavMeshQuery.raycast` | ported |
-| `dtNavMeshQuery::findDistanceToWall` | `NavMeshQuery.findDistanceToWall` | ported |
-| `dtNavMeshQuery::getPolyWallSegments` | `NavMeshQuery.getPolyWallSegments` | ported |
-| `dtNavMeshQuery::findRandomPoint` | `NavMeshQuery.findRandomPoint` | ported |
-| `dtNavMeshQuery::findRandomPointAroundCircle` | `NavMeshQuery.findRandomPointAroundCircle` | ported |
-| `dtNavMeshQuery::closestPointOnPoly` | `NavMeshQuery.closestPointOnPoly` | ported |
-| `dtNavMeshQuery::closestPointOnPolyBoundary` | `NavMeshQuery.closestPointOnPolyBoundary` | ported |
-| `dtNavMeshQuery::getPolyHeight` | `NavMeshQuery.getPolyHeight` | ported |
-| `dtNavMeshQuery::isValidPolyRef` | `NavMeshQuery.isValidPolyRef` | ported |
-| `dtNavMeshQuery::isInClosedList` | `NavMeshQuery.isInClosedList` | ported |
-| `dtNavMeshQuery::getNodePool` | `NavMeshQuery.getNodePool` | ported |
-| `dtNavMeshQuery::getAttachedNavMesh` | `NavMeshQuery.getAttachedNavMesh` | ported |
+| `dtPolyQuery` | `PolyQuery` | oracle-tested |
+| `dtPolyQuery::process` | `PolyQuery.process` | oracle-tested |
+| `dtNavMeshQuery` | `NavMeshQuery` | oracle-tested |
+| `dtNavMeshQuery::dtNavMeshQuery` | `NavMeshQuery.empty` | oracle-tested |
+| `dtNavMeshQuery::~dtNavMeshQuery` | `NavMeshQuery.deinit` | oracle-tested |
+| `dtNavMeshQuery::init` | `NavMeshQuery.init` | oracle-tested |
+| `dtNavMeshQuery::findPath` | `NavMeshQuery.findPath` | oracle-tested |
+| `dtNavMeshQuery::findStraightPath` | `NavMeshQuery.findStraightPath` | oracle-tested |
+| `dtNavMeshQuery::initSlicedFindPath` | `NavMeshQuery.initSlicedFindPath` | oracle-tested |
+| `dtNavMeshQuery::updateSlicedFindPath` | `NavMeshQuery.updateSlicedFindPath` | oracle-tested |
+| `dtNavMeshQuery::finalizeSlicedFindPath` | `NavMeshQuery.finalizeSlicedFindPath` | oracle-tested |
+| `dtNavMeshQuery::finalizeSlicedFindPathPartial` | `NavMeshQuery.finalizeSlicedFindPathPartial` | oracle-tested |
+| `dtNavMeshQuery::findPolysAroundCircle` | `NavMeshQuery.findPolysAroundCircle` | oracle-tested |
+| `dtNavMeshQuery::findPolysAroundShape` | `NavMeshQuery.findPolysAroundShape` | oracle-tested |
+| `dtNavMeshQuery::getPathFromDijkstraSearch` | `NavMeshQuery.getPathFromDijkstraSearch` | oracle-tested |
+| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt)` | `NavMeshQuery.findNearestPoly`, `is_over_poly` null | oracle-tested |
+| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt, isOverPoly)` | `NavMeshQuery.findNearestPoly` | oracle-tested |
+| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, polys, polyCount, maxPolys)` | `NavMeshQuery.queryPolygons` | oracle-tested |
+| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, query)` | `NavMeshQuery.queryPolygonsWith` | oracle-tested |
+| `dtNavMeshQuery::findLocalNeighbourhood` | `NavMeshQuery.findLocalNeighbourhood` | oracle-tested |
+| `dtNavMeshQuery::moveAlongSurface` | `NavMeshQuery.moveAlongSurface` | oracle-tested |
+| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, t, hitNormal, path, pathCount, maxPath)` | `NavMeshQuery.raycastPath` | oracle-tested |
+| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, options, hit, prevRef)` | `NavMeshQuery.raycast` | oracle-tested |
+| `dtNavMeshQuery::findDistanceToWall` | `NavMeshQuery.findDistanceToWall` | oracle-tested |
+| `dtNavMeshQuery::getPolyWallSegments` | `NavMeshQuery.getPolyWallSegments` | oracle-tested |
+| `dtNavMeshQuery::findRandomPoint` | `NavMeshQuery.findRandomPoint` | oracle-tested |
+| `dtNavMeshQuery::findRandomPointAroundCircle` | `NavMeshQuery.findRandomPointAroundCircle` | oracle-tested |
+| `dtNavMeshQuery::closestPointOnPoly` | `NavMeshQuery.closestPointOnPoly` | oracle-tested |
+| `dtNavMeshQuery::closestPointOnPolyBoundary` | `NavMeshQuery.closestPointOnPolyBoundary` | oracle-tested |
+| `dtNavMeshQuery::getPolyHeight` | `NavMeshQuery.getPolyHeight` | oracle-tested |
+| `dtNavMeshQuery::isValidPolyRef` | `NavMeshQuery.isValidPolyRef` | oracle-tested |
+| `dtNavMeshQuery::isInClosedList` | `NavMeshQuery.isInClosedList` | oracle-tested |
+| `dtNavMeshQuery::getNodePool` | `NavMeshQuery.getNodePool` | oracle-tested |
+| `dtNavMeshQuery::getAttachedNavMesh` | `NavMeshQuery.getAttachedNavMesh` | oracle-tested |
 
 ### DetourNode.h → `src/node.zig`
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtNodeFlags`: `DT_NODE_OPEN`, `DT_NODE_CLOSED`, `DT_NODE_PARENT_DETACHED` | `NodeFlags` | ported |
+| `dtNodeFlags`: `DT_NODE_OPEN`, `DT_NODE_CLOSED`, `DT_NODE_PARENT_DETACHED` | `NodeFlags` | oracle-tested |
 | `dtNodeIndex` | `NodeIndex` | ported |
-| `DT_NULL_IDX` | `null_index` | ported |
-| `DT_NODE_PARENT_BITS` | `node_parent_bits` | ported |
-| `DT_NODE_STATE_BITS` | `node_state_bits` | ported |
-| `dtNode`: `pos`, `cost`, `total`, `DT_NODE_PARENT_BITS`, `DT_NODE_STATE_BITS`, `3`, `id` | `Node` | ported |
-| `DT_MAX_STATES_PER_NODE` | `node_states_max` | ported |
-| `dtNodePool` | `NodePool` | ported |
-| `dtNodePool::dtNodePool` | `NodePool.init` | ported |
-| `dtNodePool::~dtNodePool` | `NodePool.deinit` | ported |
-| `dtNodePool::clear` | `NodePool.clear` | ported |
-| `dtNodePool::getNode` | `NodePool.getNode` | ported |
-| `dtNodePool::findNode` | `NodePool.findNode` | ported |
-| `dtNodePool::findNodes` | `NodePool.findNodes` | ported |
-| `dtNodePool::getNodeIdx` | `NodePool.getNodeIdx` | ported |
-| `dtNodePool::getNodeAtIdx` | `NodePool.getNodeAtIdx` | ported |
-| `dtNodePool::getMemUsed` | `NodePool.getMemUsed` | ported |
-| `dtNodePool::getMaxNodes` | `NodePool.getMaxNodes` | ported |
-| `dtNodePool::getHashSize` | `NodePool.getHashSize` | ported |
-| `dtNodePool::getFirst` | `NodePool.getFirst` | ported |
-| `dtNodePool::getNext` | `NodePool.getNext` | ported |
-| `dtNodePool::getNodeCount` | `NodePool.getNodeCount` | ported |
-| `dtNodeQueue` | `NodeQueue` | ported |
-| `dtNodeQueue::dtNodeQueue` | `NodeQueue.init` | ported |
-| `dtNodeQueue::~dtNodeQueue` | `NodeQueue.deinit` | ported |
-| `dtNodeQueue::clear` | `NodeQueue.clear` | ported |
-| `dtNodeQueue::top` | `NodeQueue.top` | ported |
-| `dtNodeQueue::pop` | `NodeQueue.pop` | ported |
-| `dtNodeQueue::push` | `NodeQueue.push` | ported |
-| `dtNodeQueue::modify` | `NodeQueue.modify` | ported |
-| `dtNodeQueue::empty` | `NodeQueue.isEmpty` | ported |
-| `dtNodeQueue::getMemUsed` | `NodeQueue.getMemUsed` | ported |
-| `dtNodeQueue::getCapacity` | `NodeQueue.getCapacity` | ported |
+| `DT_NULL_IDX` | `null_index` | oracle-tested |
+| `DT_NODE_PARENT_BITS` | `node_parent_bits` | oracle-tested |
+| `DT_NODE_STATE_BITS` | `node_state_bits` | oracle-tested |
+| `dtNode`: `pos`, `cost`, `total`, `DT_NODE_PARENT_BITS`, `DT_NODE_STATE_BITS`, `3`, `id` | `Node` | oracle-tested |
+| `DT_MAX_STATES_PER_NODE` | `node_states_max` | oracle-tested |
+| `dtNodePool` | `NodePool` | oracle-tested |
+| `dtNodePool::dtNodePool` | `NodePool.init` | oracle-tested |
+| `dtNodePool::~dtNodePool` | `NodePool.deinit` | oracle-tested |
+| `dtNodePool::clear` | `NodePool.clear` | oracle-tested |
+| `dtNodePool::getNode` | `NodePool.getNode` | oracle-tested |
+| `dtNodePool::findNode` | `NodePool.findNode` | oracle-tested |
+| `dtNodePool::findNodes` | `NodePool.findNodes` | oracle-tested |
+| `dtNodePool::getNodeIdx` | `NodePool.getNodeIdx` | oracle-tested |
+| `dtNodePool::getNodeAtIdx` | `NodePool.getNodeAtIdx` | oracle-tested |
+| `dtNodePool::getMemUsed` | `NodePool.getMemUsed` | oracle-tested |
+| `dtNodePool::getMaxNodes` | `NodePool.getMaxNodes` | oracle-tested |
+| `dtNodePool::getHashSize` | `NodePool.getHashSize` | oracle-tested |
+| `dtNodePool::getFirst` | `NodePool.getFirst` | oracle-tested |
+| `dtNodePool::getNext` | `NodePool.getNext` | oracle-tested |
+| `dtNodePool::getNodeCount` | `NodePool.getNodeCount` | oracle-tested |
+| `dtNodeQueue` | `NodeQueue` | oracle-tested |
+| `dtNodeQueue::dtNodeQueue` | `NodeQueue.init` | oracle-tested |
+| `dtNodeQueue::~dtNodeQueue` | `NodeQueue.deinit` | oracle-tested |
+| `dtNodeQueue::clear` | `NodeQueue.clear` | oracle-tested |
+| `dtNodeQueue::top` | `NodeQueue.top` | oracle-tested |
+| `dtNodeQueue::pop` | `NodeQueue.pop` | oracle-tested |
+| `dtNodeQueue::push` | `NodeQueue.push` | oracle-tested |
+| `dtNodeQueue::modify` | `NodeQueue.modify` | oracle-tested |
+| `dtNodeQueue::empty` | `NodeQueue.isEmpty` | oracle-tested |
+| `dtNodeQueue::getMemUsed` | `NodeQueue.getMemUsed` | oracle-tested |
+| `dtNodeQueue::getCapacity` | `NodeQueue.getCapacity` | oracle-tested |
 
 ### DetourCommon.h → `src/common.zig`
 
@@ -328,66 +328,66 @@ yes.
 | `DT_CROWD_MAX_QUERY_FILTER_TYPE` | `query_filter_type_count_max` | ported |
 | `dtCrowdNeighbour`: `idx`, `dist` | `CrowdNeighbour` | ported |
 | `CrowdAgentState`: `DT_CROWDAGENT_STATE_INVALID`, `DT_CROWDAGENT_STATE_WALKING`, `DT_CROWDAGENT_STATE_OFFMESH` | `CrowdAgentTraversal` | ported |
-| `dtCrowdAgentParams`: `radius`, `height`, `maxAcceleration`, `maxSpeed`, `collisionQueryRange`, `pathOptimizationRange`, `separationWeight`, `updateFlags`, `obstacleAvoidanceType`, `queryFilterType`, `userData` | `CrowdAgentParams` | ported |
+| `dtCrowdAgentParams`: `radius`, `height`, `maxAcceleration`, `maxSpeed`, `collisionQueryRange`, `pathOptimizationRange`, `separationWeight`, `updateFlags`, `obstacleAvoidanceType`, `queryFilterType`, `userData` | `CrowdAgentParams` | oracle-tested |
 | `MoveRequestState`: `DT_CROWDAGENT_TARGET_NONE`, `DT_CROWDAGENT_TARGET_FAILED`, `DT_CROWDAGENT_TARGET_VALID`, `DT_CROWDAGENT_TARGET_REQUESTING`, `DT_CROWDAGENT_TARGET_WAITING_FOR_QUEUE`, `DT_CROWDAGENT_TARGET_WAITING_FOR_PATH`, `DT_CROWDAGENT_TARGET_VELOCITY` | `MoveRequestStage` | ported |
-| `dtCrowdAgent`: `active`, `state`, `partial`, `corridor`, `boundary`, `topologyOptTime`, `neis`, `nneis`, `desiredSpeed`, `npos`, `disp`, `dvel`, `nvel`, `vel`, `params`, `cornerVerts`, `cornerFlags`, `cornerPolys`, `ncorners`, `targetState`, `targetRef`, `targetPos`, `targetPathqRef`, `targetReplan`, `targetReplanTime` | `CrowdAgent` | ported |
+| `dtCrowdAgent`: `active`, `state`, `partial`, `corridor`, `boundary`, `topologyOptTime`, `neis`, `nneis`, `desiredSpeed`, `npos`, `disp`, `dvel`, `nvel`, `vel`, `params`, `cornerVerts`, `cornerFlags`, `cornerPolys`, `ncorners`, `targetState`, `targetRef`, `targetPos`, `targetPathqRef`, `targetReplan`, `targetReplanTime` | `CrowdAgent` | oracle-tested |
 | `dtCrowdAgentAnimation`: `active`, `initPos`, `startPos`, `endPos`, `polyRef`, `t`, `tmax` | `CrowdAgentAnimation` | ported |
 | `UpdateFlags`: `DT_CROWD_ANTICIPATE_TURNS`, `DT_CROWD_OBSTACLE_AVOIDANCE`, `DT_CROWD_SEPARATION`, `DT_CROWD_OPTIMIZE_VIS`, `DT_CROWD_OPTIMIZE_TOPO` | `UpdateFlags` | ported |
-| `dtCrowdAgentDebugInfo`: `idx`, `optStart`, `optEnd`, `vod` | `CrowdAgentDebugInfo` | ported |
-| `dtCrowd` | `Crowd` | ported |
-| `dtCrowd::dtCrowd` | `Crowd.empty` | ported |
-| `dtCrowd::~dtCrowd` | `Crowd.deinit` | ported |
-| `dtCrowd::init` | `Crowd.init` | ported |
-| `dtCrowd::setObstacleAvoidanceParams` | `Crowd.setObstacleAvoidanceParams` | ported |
-| `dtCrowd::getObstacleAvoidanceParams` | `Crowd.getObstacleAvoidanceParams` | ported |
-| `dtCrowd::getAgent` | `Crowd.getAgent` | ported |
-| `dtCrowd::getEditableAgent` | `Crowd.getEditableAgent` | ported |
-| `dtCrowd::getAgentCount` | `Crowd.getAgentCount` | ported |
-| `dtCrowd::addAgent` | `Crowd.addAgent` | ported |
-| `dtCrowd::updateAgentParameters` | `Crowd.updateAgentParameters` | ported |
-| `dtCrowd::removeAgent` | `Crowd.removeAgent` | ported |
-| `dtCrowd::requestMoveTarget` | `Crowd.requestMoveTarget` | ported |
-| `dtCrowd::requestMoveVelocity` | `Crowd.requestMoveVelocity` | ported |
-| `dtCrowd::resetMoveTarget` | `Crowd.resetMoveTarget` | ported |
-| `dtCrowd::getActiveAgents` | `Crowd.getActiveAgents` | ported |
-| `dtCrowd::update` | `Crowd.update` | ported |
-| `dtCrowd::getFilter` | `Crowd.getFilter` | ported |
-| `dtCrowd::getEditableFilter` | `Crowd.getEditableFilter` | ported |
-| `dtCrowd::getQueryHalfExtents` | `Crowd.getQueryHalfExtents` | ported |
-| `dtCrowd::getQueryExtents` | `Crowd.getQueryExtents` | ported |
-| `dtCrowd::getVelocitySampleCount` | `Crowd.getVelocitySampleCount` | ported |
-| `dtCrowd::getGrid` | `Crowd.getGrid` | ported |
-| `dtCrowd::getPathQueue` | `Crowd.getPathQueue` | ported |
-| `dtCrowd::getNavMeshQuery` | `Crowd.getNavMeshQuery` | ported |
+| `dtCrowdAgentDebugInfo`: `idx`, `optStart`, `optEnd`, `vod` | `CrowdAgentDebugInfo` | oracle-tested |
+| `dtCrowd` | `Crowd` | oracle-tested |
+| `dtCrowd::dtCrowd` | `Crowd.empty` | oracle-tested |
+| `dtCrowd::~dtCrowd` | `Crowd.deinit` | oracle-tested |
+| `dtCrowd::init` | `Crowd.init` | oracle-tested |
+| `dtCrowd::setObstacleAvoidanceParams` | `Crowd.setObstacleAvoidanceParams` | oracle-tested |
+| `dtCrowd::getObstacleAvoidanceParams` | `Crowd.getObstacleAvoidanceParams` | oracle-tested |
+| `dtCrowd::getAgent` | `Crowd.getAgent` | oracle-tested |
+| `dtCrowd::getEditableAgent` | `Crowd.getEditableAgent` | oracle-tested |
+| `dtCrowd::getAgentCount` | `Crowd.getAgentCount` | oracle-tested |
+| `dtCrowd::addAgent` | `Crowd.addAgent` | oracle-tested |
+| `dtCrowd::updateAgentParameters` | `Crowd.updateAgentParameters` | oracle-tested |
+| `dtCrowd::removeAgent` | `Crowd.removeAgent` | oracle-tested |
+| `dtCrowd::requestMoveTarget` | `Crowd.requestMoveTarget` | oracle-tested |
+| `dtCrowd::requestMoveVelocity` | `Crowd.requestMoveVelocity` | oracle-tested |
+| `dtCrowd::resetMoveTarget` | `Crowd.resetMoveTarget` | oracle-tested |
+| `dtCrowd::getActiveAgents` | `Crowd.getActiveAgents` | oracle-tested |
+| `dtCrowd::update` | `Crowd.update` | oracle-tested |
+| `dtCrowd::getFilter` | `Crowd.getFilter` | oracle-tested |
+| `dtCrowd::getEditableFilter` | `Crowd.getEditableFilter` | oracle-tested |
+| `dtCrowd::getQueryHalfExtents` | `Crowd.getQueryHalfExtents` | oracle-tested |
+| `dtCrowd::getQueryExtents` | `Crowd.getQueryExtents` | oracle-tested |
+| `dtCrowd::getVelocitySampleCount` | `Crowd.getVelocitySampleCount` | oracle-tested |
+| `dtCrowd::getGrid` | `Crowd.getGrid` | oracle-tested |
+| `dtCrowd::getPathQueue` | `Crowd.getPathQueue` | oracle-tested |
+| `dtCrowd::getNavMeshQuery` | `Crowd.getNavMeshQuery` | oracle-tested |
 
 ### DetourPathCorridor.h → `src/path_corridor.zig`
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtPathCorridor` | `PathCorridor` | ported |
-| `dtPathCorridor::dtPathCorridor` | `PathCorridor.empty` | ported |
-| `dtPathCorridor::~dtPathCorridor` | `PathCorridor.deinit` | ported |
-| `dtPathCorridor::init` | `PathCorridor.init` | ported |
-| `dtPathCorridor::reset` | `PathCorridor.reset` | ported |
-| `dtPathCorridor::findCorners` | `PathCorridor.findCorners` | ported |
-| `dtPathCorridor::optimizePathVisibility` | `PathCorridor.optimizePathVisibility` | ported |
-| `dtPathCorridor::optimizePathTopology` | `PathCorridor.optimizePathTopology` | ported |
-| `dtPathCorridor::moveOverOffmeshConnection` | `PathCorridor.moveOverOffmeshConnection` | ported |
-| `dtPathCorridor::fixPathStart` | `PathCorridor.fixPathStart` | ported |
-| `dtPathCorridor::trimInvalidPath` | `PathCorridor.trimInvalidPath` | ported |
-| `dtPathCorridor::isValid` | `PathCorridor.isValid` | ported |
-| `dtPathCorridor::movePosition` | `PathCorridor.movePosition` | ported |
-| `dtPathCorridor::moveTargetPosition` | `PathCorridor.moveTargetPosition` | ported |
-| `dtPathCorridor::setCorridor` | `PathCorridor.setCorridor` | ported |
-| `dtPathCorridor::getPos` | `PathCorridor.getPos` | ported |
-| `dtPathCorridor::getTarget` | `PathCorridor.getTarget` | ported |
-| `dtPathCorridor::getFirstPoly` | `PathCorridor.getFirstPoly` | ported |
-| `dtPathCorridor::getLastPoly` | `PathCorridor.getLastPoly` | ported |
-| `dtPathCorridor::getPath` | `PathCorridor.getPath` | ported |
-| `dtPathCorridor::getPathCount` | `PathCorridor.getPathCount` | ported |
-| `dtMergeCorridorStartMoved` | `mergeCorridorStartMoved` | ported |
-| `dtMergeCorridorEndMoved` | `mergeCorridorEndMoved` | ported |
-| `dtMergeCorridorStartShortcut` | `mergeCorridorStartShortcut` | ported |
+| `dtPathCorridor` | `PathCorridor` | oracle-tested |
+| `dtPathCorridor::dtPathCorridor` | `PathCorridor.empty` | oracle-tested |
+| `dtPathCorridor::~dtPathCorridor` | `PathCorridor.deinit` | oracle-tested |
+| `dtPathCorridor::init` | `PathCorridor.init` | oracle-tested |
+| `dtPathCorridor::reset` | `PathCorridor.reset` | oracle-tested |
+| `dtPathCorridor::findCorners` | `PathCorridor.findCorners` | oracle-tested |
+| `dtPathCorridor::optimizePathVisibility` | `PathCorridor.optimizePathVisibility` | oracle-tested |
+| `dtPathCorridor::optimizePathTopology` | `PathCorridor.optimizePathTopology` | oracle-tested |
+| `dtPathCorridor::moveOverOffmeshConnection` | `PathCorridor.moveOverOffmeshConnection` | oracle-tested |
+| `dtPathCorridor::fixPathStart` | `PathCorridor.fixPathStart` | oracle-tested |
+| `dtPathCorridor::trimInvalidPath` | `PathCorridor.trimInvalidPath` | oracle-tested |
+| `dtPathCorridor::isValid` | `PathCorridor.isValid` | oracle-tested |
+| `dtPathCorridor::movePosition` | `PathCorridor.movePosition` | oracle-tested |
+| `dtPathCorridor::moveTargetPosition` | `PathCorridor.moveTargetPosition` | oracle-tested |
+| `dtPathCorridor::setCorridor` | `PathCorridor.setCorridor` | oracle-tested |
+| `dtPathCorridor::getPos` | `PathCorridor.getPos` | oracle-tested |
+| `dtPathCorridor::getTarget` | `PathCorridor.getTarget` | oracle-tested |
+| `dtPathCorridor::getFirstPoly` | `PathCorridor.getFirstPoly` | oracle-tested |
+| `dtPathCorridor::getLastPoly` | `PathCorridor.getLastPoly` | oracle-tested |
+| `dtPathCorridor::getPath` | `PathCorridor.getPath` | oracle-tested |
+| `dtPathCorridor::getPathCount` | `PathCorridor.getPathCount` | oracle-tested |
+| `dtMergeCorridorStartMoved` | `mergeCorridorStartMoved` | oracle-tested |
+| `dtMergeCorridorEndMoved` | `mergeCorridorEndMoved` | oracle-tested |
+| `dtMergeCorridorStartShortcut` | `mergeCorridorStartShortcut` | oracle-tested |
 
 ### DetourPathQueue.h → `src/path_queue.zig`
 
@@ -409,52 +409,52 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtLocalBoundary` | `LocalBoundary` | ported |
-| `dtLocalBoundary::dtLocalBoundary` | `LocalBoundary.empty` | ported |
-| `dtLocalBoundary::reset` | `LocalBoundary.reset` | ported |
-| `dtLocalBoundary::update` | `LocalBoundary.update` | ported |
-| `dtLocalBoundary::isValid` | `LocalBoundary.isValid` | ported |
-| `dtLocalBoundary::getCenter` | `LocalBoundary.getCenter` | ported |
-| `dtLocalBoundary::getSegmentCount` | `LocalBoundary.getSegmentCount` | ported |
-| `dtLocalBoundary::getSegment` | `LocalBoundary.getSegment` | ported |
+| `dtLocalBoundary` | `LocalBoundary` | oracle-tested |
+| `dtLocalBoundary::dtLocalBoundary` | `LocalBoundary.empty` | oracle-tested |
+| `dtLocalBoundary::reset` | `LocalBoundary.reset` | oracle-tested |
+| `dtLocalBoundary::update` | `LocalBoundary.update` | oracle-tested |
+| `dtLocalBoundary::isValid` | `LocalBoundary.isValid` | oracle-tested |
+| `dtLocalBoundary::getCenter` | `LocalBoundary.getCenter` | oracle-tested |
+| `dtLocalBoundary::getSegmentCount` | `LocalBoundary.getSegmentCount` | oracle-tested |
+| `dtLocalBoundary::getSegment` | `LocalBoundary.getSegment` | oracle-tested |
 
 ### DetourObstacleAvoidance.h → `src/obstacle_avoidance.zig`
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtObstacleCircle`: `p`, `vel`, `dvel`, `rad`, `dp`, `np` | `ObstacleCircle` | ported |
-| `dtObstacleSegment`: `p`, `q`, `touch` | `ObstacleSegment` | ported |
-| `dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug` | ported |
-| `dtObstacleAvoidanceDebugData::dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug.empty` | ported |
-| `dtObstacleAvoidanceDebugData::~dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug.deinit` | ported |
-| `dtObstacleAvoidanceDebugData::init` | `ObstacleAvoidanceDebug.init` | ported |
-| `dtObstacleAvoidanceDebugData::reset` | `ObstacleAvoidanceDebug.reset` | ported |
-| `dtObstacleAvoidanceDebugData::addSample` | `ObstacleAvoidanceDebug.addSample` | ported |
-| `dtObstacleAvoidanceDebugData::normalizeSamples` | `ObstacleAvoidanceDebug.normalizeSamples` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleCount` | `ObstacleAvoidanceDebug.getSampleCount` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleVelocity` | `ObstacleAvoidanceDebug.getSampleVelocity` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleSize` | `ObstacleAvoidanceDebug.getSampleSize` | ported |
-| `dtObstacleAvoidanceDebugData::getSamplePenalty` | `ObstacleAvoidanceDebug.getSamplePenalty` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleDesiredVelocityPenalty` | `ObstacleAvoidanceDebug.getSampleDesiredVelocityPenalty` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleCurrentVelocityPenalty` | `ObstacleAvoidanceDebug.getSampleCurrentVelocityPenalty` | ported |
-| `dtObstacleAvoidanceDebugData::getSamplePreferredSidePenalty` | `ObstacleAvoidanceDebug.getSamplePreferredSidePenalty` | ported |
-| `dtObstacleAvoidanceDebugData::getSampleCollisionTimePenalty` | `ObstacleAvoidanceDebug.getSampleCollisionTimePenalty` | ported |
-| `DT_MAX_PATTERN_DIVS` | `pattern_division_count_max` | ported |
-| `DT_MAX_PATTERN_RINGS` | `pattern_ring_count_max` | ported |
-| `dtObstacleAvoidanceParams`: `velBias`, `weightDesVel`, `weightCurVel`, `weightSide`, `weightToi`, `horizTime`, `gridSize`, `adaptiveDivs`, `adaptiveRings`, `adaptiveDepth` | `ObstacleAvoidanceParams` | ported |
-| `dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery` | ported |
-| `dtObstacleAvoidanceQuery::dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.empty` | ported |
-| `dtObstacleAvoidanceQuery::~dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.deinit` | ported |
-| `dtObstacleAvoidanceQuery::init` | `ObstacleAvoidanceQuery.init` | ported |
-| `dtObstacleAvoidanceQuery::reset` | `ObstacleAvoidanceQuery.reset` | ported |
-| `dtObstacleAvoidanceQuery::addCircle` | `ObstacleAvoidanceQuery.addCircle` | ported |
-| `dtObstacleAvoidanceQuery::addSegment` | `ObstacleAvoidanceQuery.addSegment` | ported |
-| `dtObstacleAvoidanceQuery::sampleVelocityGrid` | `ObstacleAvoidanceQuery.sampleVelocityGrid` | ported |
-| `dtObstacleAvoidanceQuery::sampleVelocityAdaptive` | `ObstacleAvoidanceQuery.sampleVelocityAdaptive` | ported |
-| `dtObstacleAvoidanceQuery::getObstacleCircleCount` | `ObstacleAvoidanceQuery.getObstacleCircleCount` | ported |
-| `dtObstacleAvoidanceQuery::getObstacleCircle` | `ObstacleAvoidanceQuery.getObstacleCircle` | ported |
-| `dtObstacleAvoidanceQuery::getObstacleSegmentCount` | `ObstacleAvoidanceQuery.getObstacleSegmentCount` | ported |
-| `dtObstacleAvoidanceQuery::getObstacleSegment` | `ObstacleAvoidanceQuery.getObstacleSegment` | ported |
+| `dtObstacleCircle`: `p`, `vel`, `dvel`, `rad`, `dp`, `np` | `ObstacleCircle` | oracle-tested |
+| `dtObstacleSegment`: `p`, `q`, `touch` | `ObstacleSegment` | oracle-tested |
+| `dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug.empty` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::~dtObstacleAvoidanceDebugData` | `ObstacleAvoidanceDebug.deinit` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::init` | `ObstacleAvoidanceDebug.init` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::reset` | `ObstacleAvoidanceDebug.reset` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::addSample` | `ObstacleAvoidanceDebug.addSample` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::normalizeSamples` | `ObstacleAvoidanceDebug.normalizeSamples` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleCount` | `ObstacleAvoidanceDebug.getSampleCount` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleVelocity` | `ObstacleAvoidanceDebug.getSampleVelocity` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleSize` | `ObstacleAvoidanceDebug.getSampleSize` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSamplePenalty` | `ObstacleAvoidanceDebug.getSamplePenalty` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleDesiredVelocityPenalty` | `ObstacleAvoidanceDebug.getSampleDesiredVelocityPenalty` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleCurrentVelocityPenalty` | `ObstacleAvoidanceDebug.getSampleCurrentVelocityPenalty` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSamplePreferredSidePenalty` | `ObstacleAvoidanceDebug.getSamplePreferredSidePenalty` | oracle-tested |
+| `dtObstacleAvoidanceDebugData::getSampleCollisionTimePenalty` | `ObstacleAvoidanceDebug.getSampleCollisionTimePenalty` | oracle-tested |
+| `DT_MAX_PATTERN_DIVS` | `pattern_division_count_max` | oracle-tested |
+| `DT_MAX_PATTERN_RINGS` | `pattern_ring_count_max` | oracle-tested |
+| `dtObstacleAvoidanceParams`: `velBias`, `weightDesVel`, `weightCurVel`, `weightSide`, `weightToi`, `horizTime`, `gridSize`, `adaptiveDivs`, `adaptiveRings`, `adaptiveDepth` | `ObstacleAvoidanceParams` | oracle-tested |
+| `dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery` | oracle-tested |
+| `dtObstacleAvoidanceQuery::dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.empty` | oracle-tested |
+| `dtObstacleAvoidanceQuery::~dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.deinit` | oracle-tested |
+| `dtObstacleAvoidanceQuery::init` | `ObstacleAvoidanceQuery.init` | oracle-tested |
+| `dtObstacleAvoidanceQuery::reset` | `ObstacleAvoidanceQuery.reset` | oracle-tested |
+| `dtObstacleAvoidanceQuery::addCircle` | `ObstacleAvoidanceQuery.addCircle` | oracle-tested |
+| `dtObstacleAvoidanceQuery::addSegment` | `ObstacleAvoidanceQuery.addSegment` | oracle-tested |
+| `dtObstacleAvoidanceQuery::sampleVelocityGrid` | `ObstacleAvoidanceQuery.sampleVelocityGrid` | oracle-tested |
+| `dtObstacleAvoidanceQuery::sampleVelocityAdaptive` | `ObstacleAvoidanceQuery.sampleVelocityAdaptive` | oracle-tested |
+| `dtObstacleAvoidanceQuery::getObstacleCircleCount` | `ObstacleAvoidanceQuery.getObstacleCircleCount` | oracle-tested |
+| `dtObstacleAvoidanceQuery::getObstacleCircle` | `ObstacleAvoidanceQuery.getObstacleCircle` | oracle-tested |
+| `dtObstacleAvoidanceQuery::getObstacleSegmentCount` | `ObstacleAvoidanceQuery.getObstacleSegmentCount` | oracle-tested |
+| `dtObstacleAvoidanceQuery::getObstacleSegment` | `ObstacleAvoidanceQuery.getObstacleSegment` | oracle-tested |
 
 ### DetourProximityGrid.h → `src/proximity_grid.zig`
 
@@ -531,35 +531,35 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `DT_TILECACHE_MAGIC` | `tile_cache_magic` | ported |
-| `DT_TILECACHE_VERSION` | `tile_cache_version` | ported |
-| `DT_TILECACHE_NULL_AREA` | `null_area` | ported |
-| `DT_TILECACHE_WALKABLE_AREA` | `walkable_area` | ported |
-| `DT_TILECACHE_NULL_IDX` | `null_index` | ported |
-| `dtTileCacheLayerHeader`: `magic`, `version`, `tx`, `ty`, `tlayer`, `bmin`, `bmax`, `hmin`, `hmax`, `width`, `height`, `minx`, `maxx`, `miny`, `maxy` | `LayerHeader` | ported |
-| `dtTileCacheLayer`: `header`, `regCount`, `heights`, `areas`, `cons`, `regs` | `Layer` | ported |
-| `dtTileCacheContour`: `nverts`, `verts`, `reg`, `area` | `Contour` | ported |
-| `dtTileCacheContourSet`: `nconts`, `conts` | `ContourSet` | ported |
-| `dtTileCachePolyMesh`: `nvp`, `nverts`, `npolys`, `verts`, `polys`, `flags`, `areas` | `PolyMesh` | ported |
+| `DT_TILECACHE_MAGIC` | `tile_cache_magic` | oracle-tested |
+| `DT_TILECACHE_VERSION` | `tile_cache_version` | oracle-tested |
+| `DT_TILECACHE_NULL_AREA` | `null_area` | oracle-tested |
+| `DT_TILECACHE_WALKABLE_AREA` | `walkable_area` | oracle-tested |
+| `DT_TILECACHE_NULL_IDX` | `null_index` | oracle-tested |
+| `dtTileCacheLayerHeader`: `magic`, `version`, `tx`, `ty`, `tlayer`, `bmin`, `bmax`, `hmin`, `hmax`, `width`, `height`, `minx`, `maxx`, `miny`, `maxy` | `LayerHeader` | oracle-tested |
+| `dtTileCacheLayer`: `header`, `regCount`, `heights`, `areas`, `cons`, `regs` | `Layer` | oracle-tested |
+| `dtTileCacheContour`: `nverts`, `verts`, `reg`, `area` | `Contour` | oracle-tested |
+| `dtTileCacheContourSet`: `nconts`, `conts` | `ContourSet` | oracle-tested |
+| `dtTileCachePolyMesh`: `nvp`, `nverts`, `npolys`, `verts`, `polys`, `flags`, `areas` | `PolyMesh` | oracle-tested |
 | `dtTileCacheAlloc` | `BuildAllocator` | ported |
-| `dtTileCacheAlloc::reset` | `BuildAllocator.reset` | ported |
-| `dtTileCacheCompressor` | `Compressor` | ported |
-| `dtTileCacheCompressor::maxCompressedSize` | `Compressor.maxCompressedSize` | ported |
-| `dtTileCacheCompressor::compress` | `Compressor.compress` | ported |
-| `dtTileCacheCompressor::decompress` | `Compressor.decompress` | ported |
-| `dtBuildTileCacheLayer` | `buildLayer` | ported |
-| `dtFreeTileCacheLayer` | `freeLayer` | ported |
-| `dtDecompressTileCacheLayer` | `decompressLayer` | ported |
-| `dtAllocTileCacheContourSet` | `allocContourSet` | ported |
-| `dtFreeTileCacheContourSet` | `freeContourSet` | ported |
-| `dtAllocTileCachePolyMesh` | `allocPolyMesh` | ported |
-| `dtFreeTileCachePolyMesh` | `freePolyMesh` | ported |
+| `dtTileCacheAlloc::reset` | `BuildAllocator.reset` | oracle-tested |
+| `dtTileCacheCompressor` | `Compressor` | oracle-tested |
+| `dtTileCacheCompressor::maxCompressedSize` | `Compressor.maxCompressedSize` | oracle-tested |
+| `dtTileCacheCompressor::compress` | `Compressor.compress` | oracle-tested |
+| `dtTileCacheCompressor::decompress` | `Compressor.decompress` | oracle-tested |
+| `dtBuildTileCacheLayer` | `buildLayer` | oracle-tested |
+| `dtFreeTileCacheLayer` | `freeLayer` | oracle-tested |
+| `dtDecompressTileCacheLayer` | `decompressLayer` | oracle-tested |
+| `dtAllocTileCacheContourSet` | `allocContourSet` | oracle-tested |
+| `dtFreeTileCacheContourSet` | `freeContourSet` | oracle-tested |
+| `dtAllocTileCachePolyMesh` | `allocPolyMesh` | oracle-tested |
+| `dtFreeTileCachePolyMesh` | `freePolyMesh` | oracle-tested |
 | `dtMarkCylinderArea` | `markCylinderArea` | ported |
 | `dtMarkBoxArea(layer, orig, cs, ch, bmin, bmax, areaId)` | `markBoxArea` | ported |
 | `dtMarkBoxArea(layer, orig, cs, ch, center, halfExtents, rotAux, areaId)` | `markOrientedBoxArea` | ported |
-| `dtBuildTileCacheRegions` | `buildRegions` | ported |
-| `dtBuildTileCacheContours` | `buildContours` | ported |
-| `dtBuildTileCachePolyMesh` | `buildPolyMesh` | ported |
+| `dtBuildTileCacheRegions` | `buildRegions` | oracle-tested |
+| `dtBuildTileCacheContours` | `buildContours` | oracle-tested |
+| `dtBuildTileCachePolyMesh` | `buildPolyMesh` | oracle-tested |
 | `dtTileCacheHeaderSwapEndian` | `swapEndianHeader` | ported |
 
 ## The integer variant
@@ -574,17 +574,18 @@ design's tolerances.
 | --- | --- | --- |
 | design: units, scales, overflow bounds, tolerances | `doc/integer-design.md` | written |
 | vector and geometry helpers | `src/integer/common.zig` | built |
-| navigation mesh, tile conversion from the float format | `src/integer/nav_mesh.zig`, `src/integer/convert.zig` | not started |
-| node pool and queue | `src/integer/node.zig` | not started |
-| queries | `src/integer/nav_mesh_query.zig` | not started |
+| navigation mesh, tile conversion from the float format | `src/integer/nav_mesh.zig`, `src/integer/convert.zig` | written, not yet built |
+| node pool and queue | `src/integer/node.zig` | written, not yet built |
+| queries | `src/integer/nav_mesh_query.zig` | written, not yet built |
 | checked against the float port within the stated tolerances | | not started |
 | exact self-determinism, on 1, 2 and N threads | | not started |
 | crowd and tile cache over integers | | left out, see `doc/integer-design.md` |
 
 ## Next
 
-1. Integrate the differential tests of the queries, the crowd pieces and the tile cache
-   builder.
-2. The integer navigation mesh and queries, their tolerance tests against the float port
-   and their determinism tests.
+1. Differential tests of the path queue, the query filter's own functions (with the
+   virtual filter switch), the rest of the crowd (move requests, velocities, off-mesh
+   animations, long seeded runs) and the tile cache builder's area marks and header swap.
+2. The integer navigation mesh and queries built, their tolerance tests against the float
+   port and their determinism tests.
 3. `zig build bench`, and its tables in the README.

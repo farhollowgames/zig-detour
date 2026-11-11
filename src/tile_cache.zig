@@ -277,8 +277,7 @@ pub const TileCache = struct {
     };
 
     /// A cache with no tables. `init` readies it; until then only `init`,
-    /// `deinit` and the lookups by reference, which find nothing, may be
-    /// called.
+    /// `deinit` and the lookups, which find nothing, may be called.
     pub const empty: TileCache = .{
         .gpa = .failing,
         .tile_lookup_size = 0,
@@ -479,6 +478,13 @@ pub const TileCache = struct {
         return encodeObstacleId(o.salt, @intCast(offset / @sizeOf(Obstacle)));
     }
 
+    /// The first tile of the lookup bucket for a grid position; null on a cache
+    /// with no tables.
+    inline fn firstTileAt(self: *const TileCache, x: i32, y: i32) ?*CompressedTile {
+        if (self.position_lookup.len == 0) return null;
+        return self.position_lookup[computeTileHash(x, y, self.tile_lookup_mask)];
+    }
+
     /// Every layer's tile at a grid position, as many as `tiles` holds.
     /// Returns how many were written.
     pub fn getTilesAt(
@@ -490,7 +496,7 @@ pub const TileCache = struct {
         var n: usize = 0;
 
         // Find tile based on hash.
-        var tile = self.position_lookup[computeTileHash(tile_x, tile_y, self.tile_lookup_mask)];
+        var tile = self.firstTileAt(tile_x, tile_y);
         while (tile) |t| : (tile = t.next) {
             const header = t.header orelse continue;
             if (header.tile_x == tile_x and header.tile_y == tile_y) {
@@ -513,7 +519,7 @@ pub const TileCache = struct {
         tile_layer: i32,
     ) ?*const CompressedTile {
         // Find tile based on hash.
-        var tile = self.position_lookup[computeTileHash(tile_x, tile_y, self.tile_lookup_mask)];
+        var tile = self.firstTileAt(tile_x, tile_y);
         while (tile) |t| : (tile = t.next) {
             const header = t.header orelse continue;
             if (header.tile_x == tile_x and

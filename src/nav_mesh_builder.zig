@@ -760,17 +760,20 @@ pub fn navMeshDataSwapEndian(data: []u8) bool {
         return false;
 
     // Find the blocks.
+    const len = data.len;
+    const blockSize = nav_mesh.blockSize;
     const header_size = common.align4(@sizeOf(MeshHeader));
-    const verts_size = common.align4(@sizeOf([3]f32) * vert_count);
-    const polys_size = common.align4(@sizeOf(Poly) * poly_count);
-    const links_size = common.align4(@sizeOf(Link) * link_count_max);
-    const detail_meshes_size = common.align4(@sizeOf(PolyDetail) * detail_mesh_count);
-    const detail_verts_size = common.align4(@sizeOf([3]f32) * detail_vert_count);
-    const detail_tris_size = common.align4(@sizeOf([4]u8) * detail_tri_count);
-    const bv_tree_size = common.align4(@sizeOf(BvNode) * bv_node_count);
-    const off_mesh_cons_size = common.align4(@sizeOf(OffMeshConnection) * off_mesh_con_count);
+    const verts_size = blockSize([3]f32, vert_count, len) orelse return false;
+    const polys_size = blockSize(Poly, poly_count, len) orelse return false;
+    const links_size = blockSize(Link, link_count_max, len) orelse return false;
+    const detail_meshes_size = blockSize(PolyDetail, detail_mesh_count, len) orelse return false;
+    const detail_verts_size = blockSize([3]f32, detail_vert_count, len) orelse return false;
+    const detail_tris_size = blockSize([4]u8, detail_tri_count, len) orelse return false;
+    const bv_tree_size = blockSize(BvNode, bv_node_count, len) orelse return false;
+    const off_mesh_cons_size = blockSize(OffMeshConnection, off_mesh_con_count, len) orelse
+        return false;
 
-    const data_size = header_size + verts_size + polys_size + links_size +
+    const data_size = @as(u64, header_size) + verts_size + polys_size + links_size +
         detail_meshes_size + detail_verts_size + detail_tris_size +
         bv_tree_size + off_mesh_cons_size;
     if (data.len < data_size) return false;

@@ -52,6 +52,8 @@ patterns and of oriented boxes).
 | --- | --- | --- |
 | `NavMesh.init` with more tile and polygon bits than a reference holds, or negative counts | undefined shifts, a huge allocation | `invalid_param` |
 | `NavMesh.addTile` with a header whose counts need more bytes than the data has | reads past the data | `invalid_param` |
+| `NavMesh.addTile` with an index in a block that points outside the tile (a polygon's vertex or neighbour, a detail mesh's vertices or triangles, a tree leaf, an off-mesh connection's polygon), a polygon without the vertices the queries read (a ground polygon of fewer than two, an off-mesh connection of none), or a tree leaf on an off-mesh connection | reads outside the tile, at once or in a later query | `invalid_param` |
+| `NavMesh.addTile` with 64-bit references and more than 2^20 polygons in a tile | references whose polygon bits overflow into the tile's | `invalid_param` |
 | `NavMesh.removeTile` with the reference of an unused entry whose salt matches | dereferences a null header | `invalid_param` |
 | `NavMesh.initSingleTile` that fails | leaves the mesh half set up | leaves it `empty` |
 | `createNavMeshData` with negative counts | undefined | `error.InvalidParam` |

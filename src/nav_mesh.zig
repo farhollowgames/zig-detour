@@ -528,11 +528,85 @@ inline fn freeLink(tile: *MeshTile, link: u32) void {
     tile.links_free_list = link;
 }
 
+/// The bytes `count` records of `T` take as a block of a tile blob, or null
+/// when one record more than `limit` bytes hold is asked for.
+pub fn blockSize(comptime T: type, count: usize, limit: usize) ?usize {
+    if (count > limit / @sizeOf(T)) return null;
+    return common.align4(@sizeOf(T) * count);
+}
+
 /// `count` records of `T` at `offset` in a tile blob. Every block of a blob
 /// starts at a multiple of four bytes.
 fn blobSlice(comptime T: type, data: []align(4) u8, offset: usize, count: usize) []align(4) T {
     const records: [*]align(4) T = @ptrCast(@alignCast(data.ptr + offset));
     return records[0..count];
+}
+
+/// Whether every index the blocks of a tile blob hold stays inside the
+/// tile, and every polygon has the vertices the queries take for granted:
+/// one, or two for a polygon that is not an off-mesh connection, and the
+/// tree names ground polygons only. These are exactly the reads the mesh
+/// and its queries make without checking.
+fn indicesStayInside(
+    header: *const MeshHeader,
+    vert_count: usize,
+    polys: []const Poly,
+    detail_meshes: []const PolyDetail,
+    detail_vert_count: usize,
+    detail_tris: []const [4]u8,
+    bv_tree: []const BvNode,
+    off_mesh_connections: []const OffMeshConnection,
+) bool {
+    const off_mesh_base: u32 = @bitCast(header.off_mesh_base);
+    for (polys, 0..) |*poly, i| {
+        if (poly.vert_count > verts_per_polygon) return false;
+        for (0..poly.vert_count) |j| {
+            if (poly.verts[j] >= vert_count) return false;
+            // A neighbour inside the tile is a polygon index plus one.
+            const neighbour = poly.neighbours[j];
+            if ((neighbour & ext_link) == 0 and neighbour > polys.len) return false;
+        }
+
+        if (poly.getType() == .off_mesh_connection) {
+            // Read by its first two vertices, whatever its count says.
+            if (poly.vert_count < 1) return false;
+            if (poly.verts[0] >= vert_count or poly.verts[1] >= vert_count) return false;
+            const connection = @as(u32, @intCast(i)) -% off_mesh_base;
+            if (connection >= off_mesh_connections.len) return false;
+            continue;
+        }
+
+        if (poly.vert_count < 2) return false;
+        if (i >= detail_meshes.len) return false;
+        const detail = &detail_meshes[i];
+        if (@as(u64, detail.tri_base) + detail.tri_count > detail_tris.len) return false;
+        for (detail_tris[detail.tri_base..][0..detail.tri_count]) |tri| {
+            // An index past the polygon's own vertices counts on from the
+            // detail's first vertex.
+            for (tri[0..3]) |index| {
+                if (index < poly.vert_count) continue;
+                const extra = @as(u64, detail.vert_base) + (index - poly.vert_count);
+                if (extra >= detail_vert_count) return false;
+            }
+        }
+    }
+
+    for (bv_tree) |*node| {
+        // A leaf names a ground polygon, as the builder makes them: one an
+        // off-mesh connection lands on is read through its edge, and an
+        // off-mesh connection has none. An inner node holds minus a step
+        // forward.
+        if (node.index >= 0) {
+            if (node.index >= polys.len) return false;
+            if (polys[@intCast(node.index)].getType() == .off_mesh_connection) return false;
+        } else if (node.index == std.math.minInt(i32)) return false;
+    }
+
+    for (off_mesh_connections) |*connection| {
+        if (connection.poly >= polys.len) return false;
+        if (polys[connection.poly].getType() != .off_mesh_connection) return false;
+    }
+    return true;
 }
 
 const invalid_param: Status = Status.failure.with(.{ .invalid_param = true });
@@ -788,8 +862,13 @@ pub const NavMesh = struct {
     /// work again; the call fails with `out_of_memory` when that entry is in
     /// use. `result`, when given, receives the new tile's reference.
     ///
-    /// A blob is trusted beyond its header: the header's counts are checked
-    /// against `data.len`, the indices inside the blocks are not.
+    /// Fails as the original does on a wrong magic number or version, a
+    /// tile with more polygons than a reference's polygon bits hold, and an
+    /// occupied place. Past the original, fails with `invalid_param` when
+    /// the blob is shorter than its header says, when an index in one of
+    /// its blocks points outside the tile, or when a polygon has no vertex
+    /// (a ground polygon, fewer than two). The coordinates are taken as they
+    /// are.
     pub fn addTile(
         self: *NavMesh,
         data: []align(4) u8,
@@ -803,7 +882,17 @@ pub const NavMesh = struct {
         if (header.version != nav_mesh_version) {
             return Status.failure.with(.{ .wrong_version = true });
         }
+        if (!polyref64) {
+            // The polygon bits of a reference must hold the tile's indices.
+            const poly_bits = common.ilog2(common.nextPow2(@bitCast(header.poly_count)));
+            if (self.poly_bits < poly_bits) return invalid_param;
+        }
+        if (self.getTileAt(header.x, header.y, header.layer) != null) {
+            return Status.failure.with(.{ .already_occupied = true });
+        }
 
+        // The original reads the blocks without these checks: their
+        // refusals stand where it would read outside the blob.
         const cast = std.math.cast;
         const vert_count = cast(usize, header.vert_count) orelse return invalid_param;
         const poly_count = cast(usize, header.poly_count) orelse return invalid_param;
@@ -818,30 +907,60 @@ pub const NavMesh = struct {
         const off_mesh_connection_count = cast(usize, header.off_mesh_connection_count) orelse
             return invalid_param;
 
+        // No block may be longer than the data, which also keeps the sizes
+        // from overflowing where a `usize` is 32 bits.
+        const len = data.len;
         const header_size = common.align4(@sizeOf(MeshHeader));
-        const verts_size = common.align4(@sizeOf([3]f32) * vert_count);
-        const polys_size = common.align4(@sizeOf(Poly) * poly_count);
-        const links_size = common.align4(@sizeOf(Link) * link_count_max);
-        const detail_meshes_size = common.align4(@sizeOf(PolyDetail) * detail_mesh_count);
-        const detail_verts_size = common.align4(@sizeOf([3]f32) * detail_vert_count);
-        const detail_tris_size = common.align4(@sizeOf([4]u8) * detail_tri_count);
-        const bv_tree_size = common.align4(@sizeOf(BvNode) * bv_node_count);
+        const verts_size = blockSize([3]f32, vert_count, len) orelse return invalid_param;
+        const polys_size = blockSize(Poly, poly_count, len) orelse return invalid_param;
+        const links_size = blockSize(Link, link_count_max, len) orelse return invalid_param;
+        const detail_meshes_size = blockSize(PolyDetail, detail_mesh_count, len) orelse
+            return invalid_param;
+        const detail_verts_size = blockSize([3]f32, detail_vert_count, len) orelse
+            return invalid_param;
+        const detail_tris_size = blockSize([4]u8, detail_tri_count, len) orelse
+            return invalid_param;
+        const bv_tree_size = blockSize(BvNode, bv_node_count, len) orelse return invalid_param;
         const off_mesh_connections_size =
-            common.align4(@sizeOf(OffMeshConnection) * off_mesh_connection_count);
-        const blob_size = header_size + verts_size + polys_size + links_size +
+            blockSize(OffMeshConnection, off_mesh_connection_count, len) orelse
+            return invalid_param;
+        const blob_size = @as(u64, header_size) + verts_size + polys_size + links_size +
             detail_meshes_size + detail_verts_size + detail_tris_size + bv_tree_size +
             off_mesh_connections_size;
-        if (data.len < blob_size) return invalid_param;
+        if (len < blob_size) return invalid_param;
 
-        if (!polyref64) {
-            // The polygon bits of a reference must hold the tile's indices.
-            const poly_bits = common.ilog2(common.nextPow2(@bitCast(header.poly_count)));
-            if (self.poly_bits < poly_bits) return invalid_param;
-        }
+        // Past what the original checks: 64-bit references have a fixed
+        // number of polygon bits too.
+        if (polyref64 and poly_count > 1 << poly_bits_64) return invalid_param;
 
-        if (self.getTileAt(header.x, header.y, header.layer) != null) {
-            return Status.failure.with(.{ .already_occupied = true });
-        }
+        var offset = header_size;
+        const verts = blobSlice([3]f32, data, offset, vert_count);
+        offset += verts_size;
+        const polys = blobSlice(Poly, data, offset, poly_count);
+        offset += polys_size;
+        const links = blobSlice(Link, data, offset, link_count_max);
+        offset += links_size;
+        const detail_meshes = blobSlice(PolyDetail, data, offset, detail_mesh_count);
+        offset += detail_meshes_size;
+        const detail_verts = blobSlice([3]f32, data, offset, detail_vert_count);
+        offset += detail_verts_size;
+        const detail_tris = blobSlice([4]u8, data, offset, detail_tri_count);
+        offset += detail_tris_size;
+        const bv_tree = blobSlice(BvNode, data, offset, bv_node_count);
+        offset += bv_tree_size;
+        const off_mesh_connections =
+            blobSlice(OffMeshConnection, data, offset, off_mesh_connection_count);
+
+        if (!indicesStayInside(
+            header,
+            verts.len,
+            polys,
+            detail_meshes,
+            detail_verts.len,
+            detail_tris,
+            bv_tree,
+            off_mesh_connections,
+        )) return invalid_param;
 
         // Take an unused entry: any, or the one `last_ref` names.
         var free_tile: ?*MeshTile = null;
@@ -874,23 +993,14 @@ pub const NavMesh = struct {
         tile.next = self.position_lookup[h];
         self.position_lookup[h] = tile;
 
-        var offset = header_size;
-        tile.verts = blobSlice([3]f32, data, offset, vert_count);
-        offset += verts_size;
-        tile.polys = blobSlice(Poly, data, offset, poly_count);
-        offset += polys_size;
-        tile.links = blobSlice(Link, data, offset, link_count_max);
-        offset += links_size;
-        tile.detail_meshes = blobSlice(PolyDetail, data, offset, detail_mesh_count);
-        offset += detail_meshes_size;
-        tile.detail_verts = blobSlice([3]f32, data, offset, detail_vert_count);
-        offset += detail_verts_size;
-        tile.detail_tris = blobSlice([4]u8, data, offset, detail_tri_count);
-        offset += detail_tris_size;
-        tile.bv_tree = blobSlice(BvNode, data, offset, bv_node_count);
-        offset += bv_tree_size;
-        tile.off_mesh_connections =
-            blobSlice(OffMeshConnection, data, offset, off_mesh_connection_count);
+        tile.verts = verts;
+        tile.polys = polys;
+        tile.links = links;
+        tile.detail_meshes = detail_meshes;
+        tile.detail_verts = detail_verts;
+        tile.detail_tris = detail_tris;
+        tile.bv_tree = bv_tree;
+        tile.off_mesh_connections = off_mesh_connections;
 
         // Every link starts on the free list.
         if (link_count_max == 0) {
@@ -1018,10 +1128,17 @@ pub const NavMesh = struct {
         };
     }
 
+    /// The first tile of the lookup bucket for a grid position; null on a mesh
+    /// with no tables.
+    inline fn firstTileAt(self: *const NavMesh, x: i32, y: i32) ?*MeshTile {
+        if (self.position_lookup.len == 0) return null;
+        return self.position_lookup[computeTileHash(x, y, self.tile_lookup_mask)];
+    }
+
     /// The tile at a grid position and layer, or null. The pointer goes
     /// stale as a `MeshTile` does.
     pub fn getTileAt(self: *const NavMesh, x: i32, y: i32, layer: i32) ?*const MeshTile {
-        var tile = self.position_lookup[computeTileHash(x, y, self.tile_lookup_mask)];
+        var tile = self.firstTileAt(x, y);
         while (tile) |t| : (tile = t.next) {
             const header = t.header orelse continue;
             if (header.x == x and header.y == y and header.layer == layer) return t;
@@ -1034,7 +1151,7 @@ pub const NavMesh = struct {
     /// does.
     pub fn getTilesAt(self: *const NavMesh, x: i32, y: i32, tiles: []*const MeshTile) usize {
         var n: usize = 0;
-        var tile = self.position_lookup[computeTileHash(x, y, self.tile_lookup_mask)];
+        var tile = self.firstTileAt(x, y);
         while (tile) |t| : (tile = t.next) {
             const header = t.header orelse continue;
             if (header.x == x and header.y == y) {
@@ -1049,7 +1166,7 @@ pub const NavMesh = struct {
 
     fn getTilesAtMutable(self: *const NavMesh, x: i32, y: i32, tiles: []*MeshTile) usize {
         var n: usize = 0;
-        var tile = self.position_lookup[computeTileHash(x, y, self.tile_lookup_mask)];
+        var tile = self.firstTileAt(x, y);
         while (tile) |t| : (tile = t.next) {
             const header = t.header orelse continue;
             if (header.x == x and header.y == y) {
