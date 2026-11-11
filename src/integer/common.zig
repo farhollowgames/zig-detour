@@ -306,16 +306,20 @@ pub fn intersectSegmentPoly2d(p0: [3]i32, p1: [3]i32, verts: []const [3]i32) Seg
         }
         const t: Fraction = .init(n, d);
         if (d < 0) {
-            // The segment is entering across this edge.
-            if (t.greaterThan(result.t_min)) {
+            // The segment is entering across this edge. A start inside the
+            // edge's half-plane puts `t` at or below zero, so at or below
+            // `t_min`, with no product to compare.
+            if (n < 0 and t.greaterThan(result.t_min)) {
                 result.t_min = t;
                 result.seg_min = @intCast(j);
                 // The segment enters after leaving the polygon.
                 if (result.t_min.greaterThan(result.t_max)) return result;
             }
         } else {
-            // The segment is leaving across this edge.
-            if (t.lessThan(result.t_max)) {
+            // The segment is leaving across this edge. An end inside the
+            // edge's half-plane puts `t` at or above one, so at or above
+            // `t_max`.
+            if (n < d and t.lessThan(result.t_max)) {
                 result.t_max = t;
                 result.seg_max = @intCast(j);
                 // The segment leaves before entering the polygon.
@@ -326,6 +330,26 @@ pub fn intersectSegmentPoly2d(p0: [3]i32, p1: [3]i32, verts: []const [3]i32) Seg
 
     result.hit = true;
     return result;
+}
+
+/// Whether the squared xz distance from `pt` to the segment `p`..`q`, as
+/// `distancePointSegmentSqr2d` rounds it, is at most `limit_sqr`. It
+/// compares products where that function divides.
+pub fn segmentWithinSqr2d(pt: [3]i32, p: [3]i32, q: [3]i32, limit_sqr: u64) bool {
+    const pqx: i64 = q[0] - p[0];
+    const pqz: i64 = q[2] - p[2];
+    const dx: i64 = pt[0] - p[0];
+    const dz: i64 = pt[2] - p[2];
+    const len_sqr = pqx * pqx + pqz * pqz;
+    const along = pqx * dx + pqz * dz;
+    if (along <= 0) return vdist2dSqr(pt, p) <= limit_sqr;
+    if (along >= len_sqr) return vdist2dSqr(pt, q) <= limit_sqr;
+    // The square rounded down is at most the limit when the square itself
+    // is below the limit plus one: `across^2 < (limit + 1) * len_sqr`, both
+    // sides within 2^126.
+    const across: i128 = pqx * dz - pqz * dx;
+    const across_sqr: u128 = @intCast(across * across);
+    return across_sqr < (@as(u128, limit_sqr) + 1) * @as(u64, @intCast(len_sqr));
 }
 
 pub const PointSegmentDistance = struct {
@@ -379,8 +403,16 @@ pub fn closestHeightOnTriangle(p: [3]i32, a: [3]i32, b: [3]i32, c: [3]i32) ?i32 
 
     // Inside the triangle: the interpolated height.
     if (u >= 0 and v >= 0 and u + v <= denom) {
-        const rise = @as(i128, v0[1]) * u + @as(i128, v1[1]) * v;
-        return @intCast(a[1] + divRound(rise, denom));
+        // Most rises fit 64 bits, where the processor divides in one
+        // instruction; the others take 128.
+        const rise_u = @mulWithOverflow(@as(i64, v0[1]), u);
+        const rise_v = @mulWithOverflow(@as(i64, v1[1]), v);
+        const rise = @addWithOverflow(rise_u[0], rise_v[0]);
+        if (rise_u[1] | rise_v[1] | rise[1] == 0) {
+            return @intCast(a[1] + divRoundNarrow(rise[0], denom));
+        }
+        const wide_rise = @as(i128, v0[1]) * u + @as(i128, v1[1]) * v;
+        return @intCast(a[1] + divRound(wide_rise, denom));
     }
     return null;
 }
@@ -733,6 +765,30 @@ test "the distance to a segment is exact at its ends and beside it" {
     d = distancePointSegmentSqr2d(.{ 3, 0, 4 }, p, p);
     try testing.expectEqual(@as(u64, 25), d.dist_sqr);
     try testing.expectEqual(Fraction.zero, d.t);
+}
+
+test "segmentWithinSqr2d agrees with the rounded distance at and around it" {
+    const maxInt = std.math.maxInt;
+    var prng: std.Random.DefaultPrng = .init(0x7365676d);
+    const random = prng.random();
+    // Small and full-range coordinates, so both sides of each product test
+    // are reached.
+    for ([_]i32{ 1000, coord_max }) |range| {
+        for (0..20_000) |_| {
+            var points: [3][3]i32 = undefined;
+            for (&points) |*point| {
+                for (point) |*c| c.* = random.intRangeAtMost(i32, -range, range);
+            }
+            const dist_sqr = distancePointSegmentSqr2d(points[0], points[1], points[2]).dist_sqr;
+            const limits = [_]u64{ dist_sqr -| 1, dist_sqr, dist_sqr +| 1, 0, maxInt(u64) };
+            for (limits) |limit| {
+                try testing.expectEqual(
+                    dist_sqr <= limit,
+                    segmentWithinSqr2d(points[0], points[1], points[2], limit),
+                );
+            }
+        }
+    }
 }
 
 test "normalize gives length one in Q16.16" {

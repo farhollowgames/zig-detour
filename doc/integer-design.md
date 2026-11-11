@@ -91,6 +91,36 @@ widest type needed. The places that would (comparing two fractions whose
 parts are both products) are listed with the query they belong to, and each
 reduces one side first.
 
+### Where 64 bits are enough
+
+A 64-bit multiply or divide is one instruction; one of 128 bits is several,
+or a library call. Each place below uses 64 bits where the bound allows it,
+and 128 bits otherwise, so its answers do not change:
+
+- `divRound` divides in 64 bits when the numerator and the denominator both
+  fit `i64`, checked at run time.
+- The height on a detail triangle is `dy0 * u + dy1 * v` over the
+  barycentric denominator, with `|dy| <= 2^30` and `0 <= u, v <= 2^61`: up to
+  `2^92`. It is worked out in 64 bits with overflow checks, and again in 128
+  when a check fires.
+- The squared distance from a point to a segment's line is `across^2 /
+  len_sqr`. With `|across| < 2^31` the square is below `2^62` and divides in
+  64 bits.
+- Whether that distance is within a limit is `across^2 < (limit + 1) *
+  len_sqr`: `across^2 <= 2^122` and `(limit + 1) * len_sqr <= 2^64 * 2^61`,
+  both within `u128`. It takes two widening multiplies where the distance
+  takes a division, and gives the same answer as rounding the distance down
+  and comparing.
+- A ray crossing a link over part of an edge compares `((start - left) *
+  den + dir * num) * 255` with `span * bounds * den`. Each product is of two
+  values within 64 bits (`span * bounds < 2^38`, `den <= 2^61`), so each is a
+  single widening multiply; the sides stay within `2^100`.
+- The root in `isqrt` starts from a 192-entry table of the root of each top
+  byte, rounded up, and takes two of Newton's steps. Worked out for the first
+  number of every top byte, where the start is furthest from the root, two
+  steps leave less than one above the root, so one decrement makes it exact.
+  A unit test checks the ends of every top byte at every even shift.
+
 Path costs add up with saturation at the largest `u64`, and a step's cost
 (its length times the area cost) is worked out in `u128` and clamped to it. A
 total can reach the limit only with an area cost above 512 on a path of tens

@@ -588,8 +588,8 @@ pub const NavMeshQuery = struct {
                 );
 
                 // The circle does not reach the neighbour.
-                const dist_sqr = common.distancePointSegmentSqr2d(center_pos, va, vb).dist_sqr;
-                if (dist_sqr > radius_sqr) continue;
+                const reached = common.segmentWithinSqr2d(center_pos, va, vb, radius_sqr);
+                if (!reached) continue;
 
                 const neighbour_node = self.node_pool.getNode(neighbour_ref, 0) orelse {
                     status.out_of_nodes = true;
@@ -2272,9 +2272,12 @@ pub const NavMeshQuery = struct {
                 const vi = verts[i];
 
                 if (neighbour_count == 0) {
-                    // A wall edge: keep the point on it nearest the end.
-                    const nearest = common.distancePointSegmentSqr2d(end_pos, vj, vi);
-                    if (nearest.dist_sqr < best_dist) {
+                    // A wall edge: keep the point on it nearest the end. The
+                    // product test turns away the edges no nearer.
+                    const nearer = best_dist > 0 and
+                        common.segmentWithinSqr2d(end_pos, vj, vi, best_dist - 1);
+                    if (nearer) {
+                        const nearest = common.distancePointSegmentSqr2d(end_pos, vj, vi);
                         best_pos = common.lerp(vj, vi, nearest.t);
                         best_dist = nearest.dist_sqr;
                         best_node = cur_node;
@@ -2289,9 +2292,9 @@ pub const NavMeshQuery = struct {
                         // Skip the edge when it is too far from the search
                         // area. The whole edge stands in for the portal, which
                         // is much faster to test.
-                        const dist_sqr =
-                            common.distancePointSegmentSqr2d(search_pos, vj, vi).dist_sqr;
-                        if (dist_sqr > search_radius_sqr) continue;
+                        const reached =
+                            common.segmentWithinSqr2d(search_pos, vj, vi, search_radius_sqr);
+                        if (!reached) continue;
 
                         // Mark the node visited and queue it.
                         if (stack_count < search_stack_size) {
@@ -2690,15 +2693,18 @@ pub const NavMeshQuery = struct {
                 const right = tile.verts[poly.verts[(@as(usize, link.edge) + 1) % poly.vert_count]];
 
                 // The crossing lies at `start + dir * t` on the axis and the
-                // link's ends at `left + span * bounds / 255`. Both are scaled by
-                // 255 and by the denominator of `t`, which is positive, so the
-                // comparison is exact; each side stays within 2^100.
+                // link's ends at `left + span * bounds / 255`, both taken from
+                // `left`. Both are scaled by 255 and by the denominator of `t`,
+                // which is positive, so the comparison is exact. Each product
+                // is of two numbers within 64 bits, and each side stays within
+                // 2^100.
                 const t = clip.t_max;
+                const from_left: i64 = @as(i64, start_pos[axis]) - left[axis];
                 const crossing =
-                    (@as(i128, start_pos[axis]) * t.den + @as(i128, dir[axis]) * t.num) * 255;
-                const span: i128 = @as(i64, right[axis]) - left[axis];
-                var link_min = (@as(i128, left[axis]) * 255 + span * link.bounds_min) * t.den;
-                var link_max = (@as(i128, left[axis]) * 255 + span * link.bounds_max) * t.den;
+                    (@as(i128, from_left) * t.den + @as(i128, dir[axis]) * t.num) * 255;
+                const span: i64 = @as(i64, right[axis]) - left[axis];
+                var link_min = @as(i128, span * link.bounds_min) * t.den;
+                var link_max = @as(i128, span * link.bounds_max) * t.den;
                 if (link_min > link_max) std.mem.swap(i128, &link_min, &link_max);
 
                 if (crossing >= link_min and crossing <= link_max) {
@@ -2903,8 +2909,8 @@ pub const NavMeshQuery = struct {
                 );
 
                 // The circle does not touch the portal: skip the neighbour.
-                const dist_sqr = common.distancePointSegmentSqr2d(center_pos, va, vb).dist_sqr;
-                if (dist_sqr > radius_sqr) continue;
+                const reached = common.segmentWithinSqr2d(center_pos, va, vb, radius_sqr);
+                if (!reached) continue;
 
                 const neighbour_node = pool.getNode(neighbour_ref, 0) orelse {
                     status.out_of_nodes = true;
@@ -3273,8 +3279,8 @@ pub const NavMeshQuery = struct {
                 );
 
                 // The circle does not touch the portal: skip the neighbour.
-                const dist_sqr = common.distancePointSegmentSqr2d(center_pos, va, vb).dist_sqr;
-                if (dist_sqr > radius_sqr) continue;
+                const reached = common.segmentWithinSqr2d(center_pos, va, vb, radius_sqr);
+                if (!reached) continue;
 
                 // Mark the node visited before the overlap test, so a polygon
                 // that fails it is not tested again from another side.
@@ -3571,10 +3577,9 @@ pub const NavMeshQuery = struct {
                 // The distance to the wall edge.
                 const vj = best_tile.verts[best_poly.verts[j]];
                 const vi = best_tile.verts[best_poly.verts[i]];
-                const nearest = common.distancePointSegmentSqr2d(center_pos, vj, vi);
-
                 // The edge is too far.
-                if (nearest.dist_sqr > radius_sqr) continue;
+                if (!common.segmentWithinSqr2d(center_pos, vj, vi, radius_sqr)) continue;
+                const nearest = common.distancePointSegmentSqr2d(center_pos, vj, vi);
 
                 // The hit is closer: shrink the search radius.
                 radius_sqr = nearest.dist_sqr;
@@ -3599,10 +3604,10 @@ pub const NavMeshQuery = struct {
                 const edge: usize = link.edge;
                 const va = best_tile.verts[best_poly.verts[edge]];
                 const vb = best_tile.verts[best_poly.verts[(edge + 1) % best_poly.vert_count]];
-                const dist_sqr = common.distancePointSegmentSqr2d(center_pos, va, vb).dist_sqr;
+                const reached = common.segmentWithinSqr2d(center_pos, va, vb, radius_sqr);
 
                 // The circle does not touch the edge: skip the neighbour.
-                if (dist_sqr > radius_sqr) continue;
+                if (!reached) continue;
 
                 if (!filter.passFilter(neighbour_ref, neighbour_tile, neighbour_poly)) continue;
 
