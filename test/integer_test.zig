@@ -617,6 +617,7 @@ fn floatNearest(
 test "integer findNearestPoly: the same polygon and over-flag, the point within tolerance" {
     var tally: Tally = .{};
     var border_cases: usize = 0;
+    var widest_gap: f64 = 0;
     var ties: usize = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x6e656172));
     const random = prng.random();
@@ -655,6 +656,9 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
                 // ends, so the polygons near the box's border that either
                 // side looks at can differ, and with them the nearest.
                 border_cases += 1;
+                const border_ref = if (ref != 0) ref else expected.ref;
+                const gap = borderGapCells(pair, border_ref, p, half_extents);
+                widest_gap = @max(widest_gap, gap);
                 continue;
             }
             if (expected.ref != ref and try equallyNear(pair, p, expected.ref, ref)) {
@@ -671,12 +675,15 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
         }
     }
     try tally.expectEnough("findNearestPoly");
-    // Few cases are decided by a polygon at the border.
-    try testing.expect(border_cases * 20 <= tally.stable);
-    try testing.expect(ties * 20 <= tally.stable);
-    std.debug.print("findNearestPoly: {d} stable cases, {d} at the box's border, {d} ties\n", .{
+    // Few cases are decided by a polygon at the border: 11 to 22 of about
+    // 1600 over seeds 0 to 6. Ties: 0 to 2.
+    try testing.expect(border_cases * 64 <= tally.stable);
+    try testing.expect(ties <= 4);
+    std.debug.print("findNearestPoly: {d} stable cases, {d} at the box's border " ++
+        "(at most {d:.2} cells off), {d} ties\n", .{
         tally.stable,
         border_cases,
+        widest_gap,
         ties,
     });
 }
@@ -733,10 +740,16 @@ fn boxGap(pair: *Pair, ref: PolyRef, center: [3]i32, half_extents: [3]i32) f64 {
             }
         }
     }
+    // Both sides clamp the query box to the tile's bounds before they look
+    // in the tree, so a box past the tile still meets its outermost cells.
     var gap: f64 = -std.math.inf(f64);
     for (0..3) |axis| {
-        const box_low: f64 = @floatFromInt(center[axis] - half_extents[axis]);
-        const box_high: f64 = @floatFromInt(center[axis] + half_extents[axis]);
+        const tile_low: f64 = @floatFromInt(header.bounds_min[axis]);
+        const tile_high: f64 = @floatFromInt(header.bounds_max[axis]);
+        const query_low: f64 = @floatFromInt(center[axis] - half_extents[axis]);
+        const query_high: f64 = @floatFromInt(center[axis] + half_extents[axis]);
+        const box_low = std.math.clamp(query_low, tile_low, tile_high);
+        const box_high = std.math.clamp(query_high, tile_low, tile_high);
         const apart = @max(box_low - high[axis], low[axis] - box_high);
         gap = @max(gap, apart);
     }
@@ -787,10 +800,21 @@ fn boxesDiffer(pair: *Pair, center: [3]i32, half_extents: [3]i32, filters: *cons
 /// Whether polygon `ref`'s tree box lies within two tree cells of the
 /// border of the box around `center`.
 fn nearBorder(pair: *Pair, ref: PolyRef, center: [3]i32, half_extents: [3]i32) !bool {
+    return borderGapCells(pair, ref, center, half_extents) <= border_cells_max;
+}
+
+/// How far polygon `ref`'s tree box lies from the border of the box around
+/// `center`, in tree cells, a position's tolerance taken off.
+fn borderGapCells(pair: *Pair, ref: PolyRef, center: [3]i32, half_extents: [3]i32) f64 {
     const header = pair.nav.getTileAndPolyByRefUnsafe(ref).tile.header.?;
     const cell_mm: f64 = @floatFromInt(header.bv_cell_size);
-    return @abs(boxGap(pair, ref, center, half_extents)) <= 2 * cell_mm + tolerance;
+    return @max(0, @abs(boxGap(pair, ref, center, half_extents)) - tolerance) / cell_mm;
 }
+
+/// How far from the query box's border, in tree cells, a polygon found by
+/// one side only may lie: the query box is widened by up to two cells on
+/// either side. The widest measured over seeds 0 to 6 is 1.97 cells.
+const border_cells_max = 2.0;
 
 test "integer queryPolygons: the same polygons but those whose tree box lies at the border" {
     const gpa = testing.allocator;
@@ -800,6 +824,8 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
     var refs: [result_count_max]PolyRef = undefined;
     var compared: usize = 0;
     var border_differences: usize = 0;
+    var border_cases: usize = 0;
+    var widest_gap: f64 = 0;
     for (try pairs(), 0..) |*pair, level| {
         for (0..300) |case| {
             errdefer std.debug.print("  level {d}, case {d}\n", .{ level, case });
@@ -827,8 +853,11 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
             }
             for (refs[0..count]) |ref| (try seen.getOrPutValue(gpa, ref, 0)).value_ptr.* |= 2;
             var entries = seen.iterator();
+            var differs = false;
+            defer border_cases += @intFromBool(differs);
             while (entries.next()) |entry| {
                 if (entry.value_ptr.* == 3) continue;
+                differs = true;
                 if (!try nearBorder(pair, entry.key_ptr.*, center, half_extents)) {
                     const gap = boxGap(pair, entry.key_ptr.*, center, half_extents);
                     std.debug.print("polygon {d}, found by {s} only, {d:.1} mm off\n", .{
@@ -839,13 +868,23 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
                     return error.TestUnexpectedResult;
                 }
                 border_differences += 1;
+                widest_gap = @max(
+                    widest_gap,
+                    borderGapCells(pair, entry.key_ptr.*, center, half_extents),
+                );
             }
         }
     }
     try testing.expect(compared >= case_count_min);
-    std.debug.print("queryPolygons: {d} cases, {d} polygons differ at the border\n", .{
+    // Over seeds 0 to 6, 48 to 97 polygons differ, in 31 to 41 of 1200 cases.
+    try testing.expect(border_cases * 24 <= compared);
+    try testing.expect(border_differences * 12 <= compared);
+    std.debug.print("queryPolygons: {d} cases, {d} polygons differ at the border " ++
+        "(at most {d:.2} cells off), in {d} cases\n", .{
         compared,
         border_differences,
+        widest_gap,
+        border_cases,
     });
 }
 
@@ -1297,16 +1336,83 @@ fn throughPortals(pair: *Pair, corridor: []const PolyRef, points: []const [2]f64
 /// tolerance.
 fn shorterThroughCorridor(
     pair: *Pair,
+    filter: *const detour.QueryFilter,
     corridor: []const PolyRef,
     float_corners: []const [3]f32,
     corners: []const [3]i32,
+    refs: []const PolyRef,
 ) bool {
     var float_plane: [result_count_max][2]f64 = undefined;
     var plane: [result_count_max][2]f64 = undefined;
     const float_points = planeOf(f32, float_corners, &float_plane);
     const points = planeOf(i32, corners, &plane);
     if (!throughPortals(pair, corridor, points)) return false;
-    return pathLength(points) <= pathLength(float_points) + tolerance;
+    // The same start and end: a path cut short also passes the portals.
+    for ([_][2]usize{ .{ 0, 0 }, .{ float_points.len - 1, points.len - 1 } }) |ends| {
+        const f = float_points[ends[0]];
+        const p = points[ends[1]];
+        if (@abs(f[0] - p[0]) > tolerance or @abs(f[1] - p[1]) > tolerance) return false;
+    }
+    if (pathLength(points) > pathLength(float_points) + tolerance) return false;
+    // Every leg walkable: the float port's ray from each corner to the next
+    // meets no wall, apart from grazing a float corner on the leg.
+    for (corners[0 .. corners.len - 1], corners[1..], refs[0 .. corners.len - 1]) |a, b, ref| {
+        const found = pair.world.nav.getTileAndPolyByRefUnsafe(ref);
+        if (found.poly.getType() == .off_mesh_connection) continue;
+        if (!walkable(pair, filter, ref, metres(a), metres(b), float_corners)) return false;
+    }
+    return true;
+}
+
+/// Whether the float port's ray from `a` to `b` meets no wall. A ray that
+/// runs through a corner of the float path, which may lie a tolerance from
+/// the exact one, can stop on that vertex; the check then goes on from just
+/// past it.
+fn walkable(
+    pair: *Pair,
+    filter: *const detour.QueryFilter,
+    start_ref: PolyRef,
+    a: [3]f32,
+    b: [3]f32,
+    float_corners: []const [3]f32,
+) bool {
+    const V = @Vector(3, f32);
+    const step_past: f32 = 0.05;
+    var visited: [result_count_max]PolyRef = undefined;
+    var ref = start_ref;
+    var from: V = a;
+    for (0..float_corners.len + 1) |_| {
+        var hit: detour.RaycastHit = .{
+            .t = 0,
+            .hit_normal = @splat(0),
+            .hit_edge_index = 0,
+            .path = &visited,
+            .path_count = 0,
+            .path_cost = 0,
+        };
+        const status = pair.float_query.raycast(ref, from, b, filter, .{}, &hit, 0);
+        if (status.failed) return false;
+        if (hit.t == std.math.floatMax(f32)) return true;
+        const at = from + @as(V, @splat(hit.t)) * (@as(V, b) - from);
+        // A corner stands at a vertex, where the ray can stop on the wall.
+        const short: f64 = @max(@abs(b[0] - at[0]), @abs(b[2] - at[2])) * scale;
+        if (short <= tolerance) return true;
+        const corner: V = for (float_corners) |c| {
+            const dx: f64 = @abs(c[0] - at[0]) * scale;
+            const dz: f64 = @abs(c[2] - at[2]) * scale;
+            if (dx <= 2 * tolerance and dz <= 2 * tolerance) break c;
+        } else return false;
+        const rest = @as(V, b) - corner;
+        const rest_length = @sqrt(rest[0] * rest[0] + rest[2] * rest[2]);
+        if (rest_length <= step_past) return true;
+        const past: [3]f32 = corner + @as(V, @splat(step_past / rest_length)) * rest;
+        ref = 0;
+        var point = past;
+        _ = pair.float_query.findNearestPoly(past, .{ 0.01, 4, 0.01 }, filter, &ref, &point, null);
+        if (ref == 0) return false;
+        from = point;
+    }
+    return false;
 }
 
 /// Whether polygon `ref` of the integer mesh has a vertex within tolerance
@@ -1345,6 +1451,7 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
     var tally: Tally = .{};
     var shared_vertex_corners: usize = 0;
     var longer_float_paths: usize = 0;
+    var longest_surplus: f64 = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x73747261));
     const random = prng.random();
     var corridor: PathAnswer = undefined;
@@ -1461,8 +1568,20 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
                 // funnel can turn on the far side of a portal and take a
                 // longer way; the exact one must then pass every portal and
                 // be no longer.
-                if (shorterThroughCorridor(pair, path, float_line, corners[0..count])) {
+                if (shorterThroughCorridor(
+                    pair,
+                    &filters.float,
+                    path,
+                    float_line,
+                    corners[0..count],
+                    refs[0..count],
+                )) {
                     longer_float_paths += 1;
+                    var float_plane: [result_count_max][2]f64 = undefined;
+                    var plane: [result_count_max][2]f64 = undefined;
+                    const surplus = pathLength(planeOf(f32, float_line, &float_plane)) -
+                        pathLength(planeOf(i32, corners[0..count], &plane));
+                    longest_surplus = @max(longest_surplus, surplus);
                     continue;
                 }
                 std.debug.print("the paths lie {d:.2} mm apart\n", .{off});
@@ -1501,12 +1620,14 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
         }
     }
     try tally.expectEnough("findStraightPath");
-    // A longer float path is a rounding accident of the float port: rare.
+    // A longer float path is a rounding accident of the float port: rare,
+    // 5 to 10 of 1200 over seeds 0 to 6. Shared-vertex corners: 11 to 24.
     try testing.expect(longer_float_paths * 50 <= tally.stable);
+    try testing.expect(shared_vertex_corners * 40 <= tally.stable);
     std.debug.print(
-        "findStraightPath: {d} corners at a vertex several portals share, " ++
-            "{d} longer float paths\n",
-        .{ shared_vertex_corners, longer_float_paths },
+        "findStraightPath: {d} stable cases, {d} corners at a vertex several portals share, " ++
+            "{d} longer float paths, the float path at most {d:.1} mm longer\n",
+        .{ tally.stable, shared_vertex_corners, longer_float_paths, longest_surplus },
     );
 }
 
@@ -2146,6 +2267,8 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
         }
     }
     try tally.expectEnough("findDistanceToWall");
+    // Ties: 0 to 1 over seeds 0 to 6.
+    try testing.expect(ties <= 2);
     std.debug.print("findDistanceToWall: {d} ties between walls\n", .{ties});
 }
 
