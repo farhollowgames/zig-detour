@@ -2375,3 +2375,273 @@ test "integer findRandomPoint: over many draws polygons are picked in proportion
         return error.TestUnexpectedResult;
     }
 }
+
+// ---------------------------------------------------------------------------
+// The undulating level at its own place
+// ---------------------------------------------------------------------------
+
+/// Whether `p` lies on polygon `ref`, within tolerance along x and z.
+fn liesOnPolygon(query: *const integer.NavMeshQuery, ref: PolyRef, p: [3]i32) bool {
+    return liesNear(query, ref, p, tolerance);
+}
+
+/// Whether `p` lies within `limit` of polygon `ref` along x and z.
+fn liesNear(query: *const integer.NavMeshQuery, ref: PolyRef, p: [3]i32, limit: f64) bool {
+    var closest: [3]i32 = p;
+    if (query.closestPointOnPoly(ref, p, &closest, null).failed) return false;
+    const dx: f64 = @floatFromInt(@abs(closest[0] - p[0]));
+    const dz: f64 = @floatFromInt(@abs(closest[2] - p[2]));
+    return dx <= limit and dz <= limit;
+}
+
+/// How far past polygon `ref` a portal across a tile border can end: a
+/// link stores where it covers the edge in 255ths of the edge, so up to a
+/// 255th of the polygon's longest edge.
+fn linkRounding(pair: *Pair, ref: PolyRef) f64 {
+    const found = pair.nav.getTileAndPolyByRefUnsafe(ref);
+    const poly = found.poly;
+    var longest: u64 = 0;
+    for (0..poly.vert_count) |i| {
+        const a = found.tile.verts[poly.verts[i]];
+        const b = found.tile.verts[poly.verts[(i + 1) % poly.vert_count]];
+        longest = @max(longest, integer.common.vdist2dSqr(a, b));
+    }
+    return @sqrt(@as(f64, @floatFromInt(longest))) / 255.0;
+}
+
+/// Fails, naming `what`, unless `ok`.
+fn expectHolds(what: []const u8, ok: bool) !void {
+    if (ok) return;
+    std.debug.print("not so: {s}\n", .{what});
+    return error.TestUnexpectedResult;
+}
+
+/// Feeds each value's bytes to `hasher`, one value at a time so no padding
+/// is read.
+fn hashValues(hasher: *std.hash.Wyhash, values: anytype) void {
+    inline for (values) |value| hasher.update(std.mem.asBytes(&value));
+}
+
+/// One run of the queries from each point to the next on the level at its
+/// own place: the hash of all they return in call order. With `check`, each
+/// query must succeed and its answer hold what the query promises.
+fn runAtPlace(
+    pair: *Pair,
+    query: *integer.NavMeshQuery,
+    points: []const [3]i32,
+    check: bool,
+) !u64 {
+    const radius = 3000;
+    const half_extents = [3]i32{ 2000, 4000, 2000 };
+    const filter: integer.QueryFilter = .{};
+    var hasher: std.hash.Wyhash = .init(0);
+    var path: [result_count_max]PolyRef = undefined;
+    var refs: [result_count_max]PolyRef = undefined;
+    var parents: [result_count_max]PolyRef = undefined;
+    var costs: [result_count_max]u64 = undefined;
+    var corners: [result_count_max][3]i32 = undefined;
+    var plane: [result_count_max][2]f64 = undefined;
+    for (points[0 .. points.len - 1], points[1..], 0..) |a, b, i| {
+        errdefer if (check) std.debug.print("  points {d} and {d}\n", .{ i, i + 1 });
+        var start_ref: PolyRef = 0;
+        var end_ref: PolyRef = 0;
+        var from = a;
+        var to = b;
+        var over = false;
+        const nearest = query.findNearestPoly(a, half_extents, &filter, &start_ref, &from, &over);
+        _ = query.findNearestPoly(b, half_extents, &filter, &end_ref, &to, null);
+        hashValues(&hasher, .{ statusBits(nearest), start_ref, end_ref, from, to, over });
+        if (start_ref == 0 or end_ref == 0) {
+            if (check) return error.TestNoPolygon;
+            continue;
+        }
+        if (check) {
+            try expectHolds("nearest start on its polygon", liesOnPolygon(query, start_ref, from));
+            try expectHolds("nearest end on its polygon", liesOnPolygon(query, end_ref, to));
+        }
+
+        var height: i32 = 0;
+        const height_status = query.getPolyHeight(start_ref, from, &height);
+        hashValues(&hasher, .{ statusBits(height_status), height });
+        // A point over the polygon lies inside it, and so has a height; a
+        // nearest point on the boundary can round a hair outside.
+        if (check and over) {
+            try expectHolds("getPolyHeight succeeds", !height_status.failed);
+            try expectHolds("height on the surface", @abs(height - from[1]) <= height_tolerance);
+        }
+
+        var path_count: usize = 0;
+        const path_status =
+            query.findPath(start_ref, end_ref, from, to, &filter, &path, &path_count);
+        hashValues(&hasher, .{statusBits(path_status)});
+        hasher.update(std.mem.sliceAsBytes(path[0..path_count]));
+        if (check) {
+            try expectHolds("findPath succeeds", !path_status.failed and path_count > 0);
+            try expectHolds("corridor starts at the start", start_ref == path[0]);
+        }
+        if (path_count == 0) continue;
+
+        var count: usize = 0;
+        const straight = query.findStraightPath(
+            from,
+            to,
+            path[0..path_count],
+            &corners,
+            null,
+            &refs,
+            &count,
+            .{},
+        );
+        hashValues(&hasher, .{statusBits(straight)});
+        hasher.update(std.mem.sliceAsBytes(corners[0..count]));
+        if (check) {
+            try expectHolds("findStraightPath succeeds", !straight.failed and count > 0);
+            const first_on = liesOnPolygon(query, start_ref, corners[0]);
+            try expectHolds("first corner on the start polygon", first_on);
+            for (corners[0..count], refs[0..count]) |corner, ref| {
+                if (ref == 0) continue;
+                const on = liesNear(query, ref, corner, tolerance + linkRounding(pair, ref));
+                try expectHolds("corner on its polygon", on);
+            }
+            const line = planeOf(i32, corners[0..count], &plane);
+            const through = throughPortals(pair, path[0..path_count], line);
+            try expectHolds("path through the portals", through);
+        }
+
+        var hit: integer.RaycastHit = .{
+            .t = .zero,
+            .hit_normal = @splat(0),
+            .hit_edge_index = 0,
+            .path = &refs,
+            .path_count = 0,
+            .path_cost = 0,
+        };
+        const ray_options: detour.RaycastOptions = .{ .use_costs = i % 2 == 0 };
+        const ray = query.raycast(start_ref, from, to, &filter, ray_options, &hit, 0);
+        const hit_point = hit.point(from, to);
+        hashValues(&hasher, .{ statusBits(ray), hit.t.num, hit.t.den, hit.hit_normal });
+        hasher.update(std.mem.sliceAsBytes(refs[0..hit.path_count]));
+        if (check) {
+            // A ray from a start on the boundary, rounded a hair outside,
+            // misses the start polygon and stops at once.
+            try expectHolds("raycast succeeds", !ray.failed and (hit.path_count > 0 or !over));
+            if (hit.path_count > 0) {
+                const last = refs[hit.path_count - 1];
+                const hit_on = liesOnPolygon(query, last, hit_point);
+                try expectHolds("hit point on the last polygon", hit_on);
+            }
+        }
+
+        var walked: [3]i32 = from;
+        count = 0;
+        const move = query.moveAlongSurface(start_ref, from, to, &filter, &walked, &refs, &count);
+        hashValues(&hasher, .{ statusBits(move), walked });
+        hasher.update(std.mem.sliceAsBytes(refs[0..count]));
+        if (check) {
+            try expectHolds("moveAlongSurface succeeds", !move.failed and count > 0);
+            const walked_on = liesOnPolygon(query, refs[count - 1], walked);
+            try expectHolds("walked point on the last polygon", walked_on);
+        }
+
+        count = 0;
+        const around = query.findPolysAroundCircle(
+            start_ref,
+            from,
+            radius,
+            &filter,
+            &refs,
+            &parents,
+            &costs,
+            &count,
+            result_count_max,
+        );
+        hashValues(&hasher, .{statusBits(around)});
+        hasher.update(std.mem.sliceAsBytes(refs[0..count]));
+        hasher.update(std.mem.sliceAsBytes(costs[0..count]));
+        if (check) {
+            try expectHolds("findPolysAroundCircle succeeds", !around.failed and count > 0);
+            try expectHolds("search starts at the start", start_ref == refs[0]);
+        }
+
+        var wall_distance: i32 = 0;
+        var wall: [3]i32 = @splat(0);
+        var normal: [3]i32 = @splat(0);
+        const wall_status = query.findDistanceToWall(
+            start_ref,
+            from,
+            radius,
+            &filter,
+            &wall_distance,
+            &wall,
+            &normal,
+        );
+        hashValues(&hasher, .{ statusBits(wall_status), wall_distance, wall, normal });
+        if (check) {
+            try expectHolds("findDistanceToWall succeeds", !wall_status.failed);
+            const within = wall_distance >= 0 and wall_distance <= radius;
+            try expectHolds("wall within the radius", within);
+            if (wall_distance < radius) {
+                const dx: f64 = @floatFromInt(wall[0] - from[0]);
+                const dz: f64 = @floatFromInt(wall[2] - from[2]);
+                const reach = @sqrt(dx * dx + dz * dz);
+                const off = @abs(reach - @as(f64, @floatFromInt(wall_distance)));
+                try expectHolds("wall point at the distance", off <= tolerance);
+            }
+        }
+    }
+    return hasher.final();
+}
+
+/// One thread's run over the level at its own place.
+fn runAtPlaceOnThread(
+    pair: *Pair,
+    nav: *const integer.NavMesh,
+    points: []const [3]i32,
+    hash: *u64,
+) void {
+    var query: integer.NavMeshQuery = .empty;
+    if (query.init(std.heap.page_allocator, nav, 4096).failed) return;
+    defer query.deinit(std.heap.page_allocator);
+    hash.* = runAtPlace(pair, &query, points, false) catch 0;
+}
+
+// The float port is compared on this level 5 km nearer the origin. Here it
+// stands where RecastDemo puts it, and the integer variant is checked
+// against itself and against what each query promises.
+test "integer undulating level at its own place: every query works, the same on every run" {
+    const gpa = testing.allocator;
+    const pair = try std.heap.page_allocator.create(Pair);
+    defer std.heap.page_allocator.destroy(pair);
+    try pair.init(
+        std.heap.page_allocator,
+        support.undulating_obj,
+        support.tiled_config,
+        .{ .odd_tile_cell_size = 0.2, .seed = 84 },
+    );
+    defer pair.deinit(std.heap.page_allocator);
+    try testing.expect(@abs(pair.nav.getParams().origin[0]) > 4_000_000);
+
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x706c616365));
+    const points = try gpa.alloc([3]i32, 301);
+    defer gpa.free(points);
+    // Places on the ground with a polygon near: there every query has an
+    // answer to give.
+    const filter: integer.QueryFilter = .{};
+    for (points) |*point| {
+        point.* = while (true) {
+            const p = pair.groundPoint(prng.random(), 0.3);
+            var ref: PolyRef = 0;
+            var on = p;
+            _ = pair.query.findNearestPoly(p, .{ 2000, 4000, 2000 }, &filter, &ref, &on, null);
+            if (ref != 0) break p;
+        };
+    }
+
+    const first = try runAtPlace(pair, &pair.query, points, true);
+    try testing.expectEqual(first, try runAtPlace(pair, &pair.query, points, false));
+    var hash: u64 = 0;
+    const thread =
+        try std.Thread.spawn(.{}, runAtPlaceOnThread, .{ pair, &pair.nav, points, &hash });
+    thread.join();
+    try testing.expectEqual(first, hash);
+}
