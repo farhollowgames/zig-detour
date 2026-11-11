@@ -1117,3 +1117,7 @@ pub extern fn ref_node_queue_modify(queue: *NodeQueue, node: *Node) void;
 pub extern fn ref_node_queue_empty(queue: *const NodeQueue) bool;
 pub extern fn ref_node_queue_get_mem_used(queue: *const NodeQueue) i32;
 pub extern fn ref_node_queue_get_capacity(queue: *const NodeQueue) i32;
+
+/// Returns `value`: the benchmark times a call of it, the cost of reaching
+/// the original through this interface alone.
+pub extern fn ref_bench_identity(value: u64) u64;

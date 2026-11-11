@@ -1269,3 +1269,7 @@ extern "C" void ref_node_queue_modify(dtNodeQueue* queue, dtNode* node) { queue-
 extern "C" bool ref_node_queue_empty(const dtNodeQueue* queue) { return queue->empty(); }
 extern "C" int ref_node_queue_get_mem_used(const dtNodeQueue* queue) { return queue->getMemUsed(); }
 extern "C" int ref_node_queue_get_capacity(const dtNodeQueue* queue) { return queue->getCapacity(); }
+
+// The benchmark's measure of what a call through this file alone costs: it
+// returns its argument and does nothing else.
+extern "C" uint64_t ref_bench_identity(uint64_t value) { return value; }

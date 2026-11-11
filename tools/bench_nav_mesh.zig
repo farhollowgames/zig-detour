@@ -615,6 +615,18 @@ const Context = struct {
         return sum;
     }
 
+    fn baselineCallAlone(context: *Context) u64 {
+        var sum: u64 = 0;
+        for (context.validity_refs) |ref| sum +%= reference.ref_bench_identity(ref);
+        return sum;
+    }
+
+    fn portCallAlone(context: *Context) u64 {
+        var sum: u64 = 0;
+        for (context.validity_refs) |ref| sum +%= ref;
+        return sum;
+    }
+
     fn baselineIsValidPolyRef(context: *Context) u64 {
         var sum: u64 = 0;
         const nav = context.reference_nav;
@@ -1323,6 +1335,20 @@ pub fn run(bench: *Bench) !void {
 
     const tile_count = context.tiles.len;
     const poly_count = context.poly_refs.len;
+
+    // What reaching the original through its C interface costs, before any
+    // work: a call that returns its argument against the same sum inline.
+    // The original's side of every row pays it once a call.
+    try bench.compare(
+        .{
+            .name = "calibration: one call through the C interface",
+            .per = "call",
+            .count = context.validity_refs.len,
+        },
+        &context,
+        Context.baselineCallAlone,
+        Context.portCallAlone,
+    );
 
     // Every tile of the level built from its Recast output and freed.
     try bench.compare(
