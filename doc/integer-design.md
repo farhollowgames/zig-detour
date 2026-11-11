@@ -29,6 +29,25 @@ The crowd and the tile cache steer by velocities, sample angles and blend
 weights; an integer version of them would be a new design, not a variant of
 this one, so they are left out here.
 
+## Use
+
+Its names and calls are the float port's, with `[3]i32` positions in whole
+millimetres; costs are whole numbers in 1/256 mm, and a ray's hit is an exact
+fraction. A tile is baked as usual and converted:
+
+```zig
+// Metres to millimetres: a scale of 1000.
+const data = try detour.integer.tileFromFloat(gpa, float_tile, 1000);
+var nav: detour.integer.NavMesh = .empty;
+if (nav.initSingleTile(gpa, data, .{ .free_data = true }).failed) {
+    gpa.free(data);
+    return error.BadTile;
+}
+defer nav.deinit();
+```
+
+Coordinates lie within 2^29 mm (about 536 km) of the origin.
+
 ## Units
 
 | quantity | type | unit |

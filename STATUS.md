@@ -27,14 +27,14 @@ original, and why.
 | Detour | DetourStatus.h | `src/status.zig` | 17 |  |  | 17 |  |  |
 | Detour | DetourMath.h | `src/common.zig` | 1 |  |  | 1 |  |  |
 | DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  |  | 33 | 4 |  |
-| DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  |  | 24 |  |  |
-| DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  |  | 11 |  |  |
-| DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  |  | 8 |  |  |
+| DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  |  | 19 | 5 |  |
+| DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  |  | 7 | 4 |  |
+| DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  |  | 7 | 1 |  |
 | DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  |  | 28 | 5 |  |
-| DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 10 |  |  |
+| DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 7 | 3 |  |
 | DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 42 | 7 |  |
 | DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  |  | 30 |  |  |
-| | | **all** | 415 |  |  | 346 | 69 |  |
+| | | **all** | 415 |  |  | 333 | 82 |  |
 
 The differential tests run twice: with every build switch off, and with every one on.
 
@@ -369,16 +369,16 @@ yes.
 | `dtPathCorridor::~dtPathCorridor` | `PathCorridor.deinit` | oracle-tested |
 | `dtPathCorridor::init` | `PathCorridor.init` | oracle-tested |
 | `dtPathCorridor::reset` | `PathCorridor.reset` | oracle-tested |
-| `dtPathCorridor::findCorners` | `PathCorridor.findCorners` | oracle-tested |
-| `dtPathCorridor::optimizePathVisibility` | `PathCorridor.optimizePathVisibility` | oracle-tested |
-| `dtPathCorridor::optimizePathTopology` | `PathCorridor.optimizePathTopology` | oracle-tested |
+| `dtPathCorridor::findCorners` | `PathCorridor.findCorners` | benchmarked |
+| `dtPathCorridor::optimizePathVisibility` | `PathCorridor.optimizePathVisibility` | benchmarked |
+| `dtPathCorridor::optimizePathTopology` | `PathCorridor.optimizePathTopology` | benchmarked |
 | `dtPathCorridor::moveOverOffmeshConnection` | `PathCorridor.moveOverOffmeshConnection` | oracle-tested |
 | `dtPathCorridor::fixPathStart` | `PathCorridor.fixPathStart` | oracle-tested |
 | `dtPathCorridor::trimInvalidPath` | `PathCorridor.trimInvalidPath` | oracle-tested |
 | `dtPathCorridor::isValid` | `PathCorridor.isValid` | oracle-tested |
-| `dtPathCorridor::movePosition` | `PathCorridor.movePosition` | oracle-tested |
+| `dtPathCorridor::movePosition` | `PathCorridor.movePosition` | benchmarked |
 | `dtPathCorridor::moveTargetPosition` | `PathCorridor.moveTargetPosition` | oracle-tested |
-| `dtPathCorridor::setCorridor` | `PathCorridor.setCorridor` | oracle-tested |
+| `dtPathCorridor::setCorridor` | `PathCorridor.setCorridor` | benchmarked |
 | `dtPathCorridor::getPos` | `PathCorridor.getPos` | oracle-tested |
 | `dtPathCorridor::getTarget` | `PathCorridor.getTarget` | oracle-tested |
 | `dtPathCorridor::getFirstPoly` | `PathCorridor.getFirstPoly` | oracle-tested |
@@ -399,10 +399,10 @@ yes.
 | `dtPathQueue::dtPathQueue` | `PathQueue.empty` | oracle-tested |
 | `dtPathQueue::~dtPathQueue` | `PathQueue.deinit` | oracle-tested |
 | `dtPathQueue::init` | `PathQueue.init` | oracle-tested |
-| `dtPathQueue::update` | `PathQueue.update` | oracle-tested |
-| `dtPathQueue::request` | `PathQueue.request` | oracle-tested |
-| `dtPathQueue::getRequestStatus` | `PathQueue.getRequestStatus` | oracle-tested |
-| `dtPathQueue::getPathResult` | `PathQueue.getPathResult` | oracle-tested |
+| `dtPathQueue::update` | `PathQueue.update` | benchmarked |
+| `dtPathQueue::request` | `PathQueue.request` | benchmarked |
+| `dtPathQueue::getRequestStatus` | `PathQueue.getRequestStatus` | benchmarked |
+| `dtPathQueue::getPathResult` | `PathQueue.getPathResult` | benchmarked |
 | `dtPathQueue::getNavQuery` | `PathQueue.getNavQuery` | oracle-tested |
 
 ### DetourLocalBoundary.h → `src/local_boundary.zig`
@@ -412,7 +412,7 @@ yes.
 | `dtLocalBoundary` | `LocalBoundary` | oracle-tested |
 | `dtLocalBoundary::dtLocalBoundary` | `LocalBoundary.empty` | oracle-tested |
 | `dtLocalBoundary::reset` | `LocalBoundary.reset` | oracle-tested |
-| `dtLocalBoundary::update` | `LocalBoundary.update` | oracle-tested |
+| `dtLocalBoundary::update` | `LocalBoundary.update` | benchmarked |
 | `dtLocalBoundary::isValid` | `LocalBoundary.isValid` | oracle-tested |
 | `dtLocalBoundary::getCenter` | `LocalBoundary.getCenter` | oracle-tested |
 | `dtLocalBoundary::getSegmentCount` | `LocalBoundary.getSegmentCount` | oracle-tested |
@@ -464,9 +464,9 @@ yes.
 | `dtProximityGrid::dtProximityGrid` | `ProximityGrid.empty` | oracle-tested |
 | `dtProximityGrid::~dtProximityGrid` | `ProximityGrid.deinit` | oracle-tested |
 | `dtProximityGrid::init` | `ProximityGrid.init` | oracle-tested |
-| `dtProximityGrid::clear` | `ProximityGrid.clear` | oracle-tested |
-| `dtProximityGrid::addItem` | `ProximityGrid.addItem` | oracle-tested |
-| `dtProximityGrid::queryItems` | `ProximityGrid.queryItems` | oracle-tested |
+| `dtProximityGrid::clear` | `ProximityGrid.clear` | benchmarked |
+| `dtProximityGrid::addItem` | `ProximityGrid.addItem` | benchmarked |
+| `dtProximityGrid::queryItems` | `ProximityGrid.queryItems` | benchmarked |
 | `dtProximityGrid::getItemCountAt` | `ProximityGrid.getItemCountAt` | oracle-tested |
 | `dtProximityGrid::getBounds` | `ProximityGrid.getBounds` | oracle-tested |
 | `dtProximityGrid::getCellSize` | `ProximityGrid.getCellSize` | oracle-tested |
@@ -586,10 +586,7 @@ design's tolerances.
 
 ## Next
 
-1. Benchmark rows for the parts the crowd and the queries use inside: the path corridor, the
-   proximity grid, the local boundary, the path queue, the query filter, the node pool, and
-   the tile cache builder's steps.
-2. The performance pass, by a fresh agent: the rows where the port is slower
+1. The performance pass, by a fresh agent: the rows where the port is slower
    (`closestHeightOnTriangle`, `navMeshDataSwapEndian`, `overlapPolyPoly2d`,
    `NavMesh.addTile`, the tile cache rows) and the integer queries.
-3. The skeptic and the fixes, by fresh agents.
+2. The skeptic and the fixes, by fresh agents.

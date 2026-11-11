@@ -1,5 +1,6 @@
-//! Benchmark rows for the crowd: its update and agent calls, and the
-//! velocity sampling.
+//! Benchmark rows for the crowd: its update and agent calls, the velocity
+//! sampling, the path corridor, the local boundary, the proximity grid and
+//! the path queue.
 
 const std = @import("std");
 const support = @import("support");
@@ -922,6 +923,541 @@ const AvoidanceContext = struct {
     }
 };
 
+/// How many paths the corridor and queue rows go along: from each place of
+/// the first half to the place half the list on.
+const pair_count = place_count / 2;
+/// How many corners a corridor is asked for: what a crowd asks for.
+const corner_count_max = 4;
+/// How many neighbours a grid query returns: what a crowd asks for.
+const neighbour_count_max = 32;
+/// The search iterations of one path queue update: what a crowd gives it.
+const queue_iteration_count = 100;
+/// How many requests the path queue holds at once.
+const queue_request_count = detour.PathQueue.request_count_max;
+/// The updates a batch of queue requests may take before the row moves on.
+const queue_update_count_max = 1024;
+
+/// A query of each side, the paths between pairs of places, and a corridor,
+/// a boundary, a proximity grid and a path queue of each side, for the rows
+/// of the crowd's parts.
+const PartsContext = struct {
+    places: *const Places,
+    query: detour.NavMeshQuery,
+    filter: detour.QueryFilter,
+    corridor: detour.PathCorridor,
+    boundary: detour.LocalBoundary,
+    grid: detour.ProximityGrid,
+    queue: detour.PathQueue,
+    original_query: *reference.NavMeshQuery,
+    original_filter: *reference.QueryFilter,
+    original_corridor: *reference_crowd.PathCorridor,
+    original_boundary: *reference_crowd.LocalBoundary,
+    original_grid: *reference_crowd.ProximityGrid,
+    original_queue: *reference_crowd.PathQueue,
+
+    /// The polygons of each pair's path, from place `i` to place
+    /// `i + pair_count`.
+    paths: [pair_count][path_count_max]PolyRef,
+    path_counts: [pair_count]usize,
+    /// For each pair, a point up to a metre from the start toward the
+    /// path's first corner: where an agent moves in a step.
+    steps: [pair_count][3]f32,
+    /// For each pair, the last of the path's first `corner_count_max`
+    /// corners: where an agent looks for a shortcut.
+    lookaheads: [pair_count][3]f32,
+
+    /// Room for what the rows ask of each side.
+    corner_points: [corner_count_max][3]f32,
+    corner_flags: [corner_count_max]detour.StraightPathFlags,
+    original_corner_flags: [corner_count_max]u8,
+    corner_refs: [corner_count_max]PolyRef,
+    neighbours: [neighbour_count_max]u16,
+    result_path: [path_count_max]PolyRef,
+
+    /// Attaches every part of each side to `world` and finds the paths.
+    /// `self` must not move afterwards. Free with `deinit`.
+    fn init(self: *PartsContext, world: *support.World, places: *const Places) !void {
+        const gpa = std.heap.c_allocator;
+        self.places = places;
+
+        self.query = .empty;
+        if (self.query.init(gpa, &world.nav, node_count_max).failed) {
+            return error.QueryInitFailed;
+        }
+        errdefer self.query.deinit(gpa);
+        self.filter = .{};
+        self.corridor = .empty;
+        if (!self.corridor.init(gpa, path_count_max)) return error.OutOfMemory;
+        errdefer self.corridor.deinit(gpa);
+        self.boundary = .empty;
+        self.grid = .empty;
+        const grid_pool_size = crowd_agent_count_max * 4;
+        if (!self.grid.init(gpa, grid_pool_size, agent_radius * 3)) return error.OutOfMemory;
+        errdefer self.grid.deinit(gpa);
+        self.queue = .empty;
+        if (!self.queue.init(gpa, path_count_max, node_count_max, &world.nav)) {
+            return error.OutOfMemory;
+        }
+        errdefer self.queue.deinit(gpa);
+
+        self.original_query = reference.ref_query_alloc() orelse return error.OutOfMemory;
+        errdefer reference.ref_query_free(self.original_query);
+        const attached: detour.Status = @bitCast(
+            reference.ref_query_init(self.original_query, world.reference_nav, node_count_max),
+        );
+        if (attached.failed) return error.QueryInitFailed;
+        self.original_filter = reference.ref_filter_create() orelse return error.OutOfMemory;
+        errdefer reference.ref_filter_destroy(self.original_filter);
+        self.original_corridor = reference_crowd.ref_corridor_create() orelse
+            return error.OutOfMemory;
+        errdefer reference_crowd.ref_corridor_destroy(self.original_corridor);
+        if (!reference_crowd.ref_corridor_init(self.original_corridor, path_count_max)) {
+            return error.OutOfMemory;
+        }
+        self.original_boundary = reference_crowd.ref_local_boundary_create() orelse
+            return error.OutOfMemory;
+        errdefer reference_crowd.ref_local_boundary_destroy(self.original_boundary);
+        self.original_grid = reference_crowd.ref_prox_grid_alloc() orelse return error.OutOfMemory;
+        errdefer reference_crowd.ref_prox_grid_free(self.original_grid);
+        if (!reference_crowd.ref_prox_grid_init(
+            self.original_grid,
+            grid_pool_size,
+            agent_radius * 3,
+        )) return error.OutOfMemory;
+        self.original_queue = reference_crowd.ref_path_queue_create() orelse
+            return error.OutOfMemory;
+        errdefer reference_crowd.ref_path_queue_destroy(self.original_queue);
+        if (!reference_crowd.ref_path_queue_init(
+            self.original_queue,
+            path_count_max,
+            node_count_max,
+            world.reference_nav,
+        )) return error.OutOfMemory;
+
+        self.corner_points = @splat(@splat(0));
+        self.corner_flags = @splat(.{});
+        self.original_corner_flags = @splat(0);
+        self.corner_refs = @splat(0);
+        self.neighbours = @splat(0);
+        self.result_path = @splat(0);
+
+        // The paths, and where an agent on each would step and look, from
+        // the original's query and corridor.
+        for (0..pair_count) |i| {
+            var path_count: i32 = 0;
+            const status: detour.Status = @bitCast(reference.ref_query_find_path(
+                self.original_query,
+                places.refs[i],
+                places.refs[i + pair_count],
+                &places.points[i],
+                &places.points[i + pair_count],
+                self.original_filter,
+                &self.paths[i],
+                &path_count,
+                path_count_max,
+            ));
+            if (status.failed) return error.NoPath;
+            self.path_counts[i] = @intCast(path_count);
+
+            self.originalSetCorridor(i);
+            const corner_count = reference_crowd.ref_corridor_find_corners(
+                self.original_corridor,
+                @ptrCast(&self.corner_points),
+                &self.original_corner_flags,
+                &self.corner_refs,
+                corner_count_max,
+                self.original_query,
+                self.original_filter,
+            );
+            if (corner_count == 0) return error.NoCorner;
+            const start = places.points[i];
+            const corner = self.corner_points[0];
+            const offset: [3]f32 = .{
+                corner[0] - start[0],
+                corner[1] - start[1],
+                corner[2] - start[2],
+            };
+            const length = @sqrt(offset[0] * offset[0] + offset[2] * offset[2]);
+            const scale: f32 = if (length > 1.0) 1.0 / length else 1.0;
+            self.steps[i] = .{
+                start[0] + offset[0] * scale,
+                start[1] + offset[1] * scale,
+                start[2] + offset[2] * scale,
+            };
+            self.lookaheads[i] = self.corner_points[@intCast(corner_count - 1)];
+        }
+    }
+
+    fn deinit(self: *PartsContext) void {
+        const gpa = std.heap.c_allocator;
+        reference_crowd.ref_path_queue_destroy(self.original_queue);
+        reference_crowd.ref_prox_grid_free(self.original_grid);
+        reference_crowd.ref_local_boundary_destroy(self.original_boundary);
+        reference_crowd.ref_corridor_destroy(self.original_corridor);
+        reference.ref_filter_destroy(self.original_filter);
+        reference.ref_query_free(self.original_query);
+        self.queue.deinit(gpa);
+        self.grid.deinit(gpa);
+        self.corridor.deinit(gpa);
+        self.query.deinit(gpa);
+        self.* = undefined;
+    }
+
+    /// Sets the original's corridor to pair `i`'s path, at its start.
+    fn originalSetCorridor(self: *PartsContext, i: usize) void {
+        const places = self.places;
+        reference_crowd.ref_corridor_reset(
+            self.original_corridor,
+            places.refs[i],
+            &places.points[i],
+        );
+        reference_crowd.ref_corridor_set_corridor(
+            self.original_corridor,
+            &places.points[i + pair_count],
+            &self.paths[i],
+            @intCast(self.path_counts[i]),
+        );
+    }
+
+    /// Sets the port's corridor to pair `i`'s path, at its start.
+    fn portSetCorridor(self: *PartsContext, i: usize) void {
+        const places = self.places;
+        self.corridor.reset(places.refs[i], places.points[i]);
+        const path = self.paths[i][0..self.path_counts[i]];
+        self.corridor.setCorridor(places.points[i + pair_count], path);
+    }
+
+    /// What the original's corridor adds to a checksum: its position and
+    /// the length and ends of its path.
+    fn originalCorridorSum(self: *const PartsContext) u64 {
+        const corridor = self.original_corridor;
+        return pointSum(reference_crowd.ref_corridor_get_pos(corridor).*) +%
+            countSum(reference_crowd.ref_corridor_get_path_count(corridor)) +%
+            reference_crowd.ref_corridor_get_first_poly(corridor) +%
+            reference_crowd.ref_corridor_get_last_poly(corridor);
+    }
+
+    fn portCorridorSum(self: *const PartsContext) u64 {
+        const corridor = &self.corridor;
+        return pointSum(corridor.getPos()) +% countSum(corridor.getPathCount()) +%
+            corridor.getFirstPoly() +% corridor.getLastPoly();
+    }
+
+    fn baselineFindCorners(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.originalSetCorridor(i);
+            const n = reference_crowd.ref_corridor_find_corners(
+                context.original_corridor,
+                @ptrCast(&context.corner_points),
+                &context.original_corner_flags,
+                &context.corner_refs,
+                corner_count_max,
+                context.original_query,
+                context.original_filter,
+            );
+            sum +%= countSum(n);
+            if (n > 0) {
+                const last: usize = @intCast(n - 1);
+                sum +%= pointSum(context.corner_points[last]) +% context.corner_refs[last];
+            }
+        }
+        return sum;
+    }
+
+    fn portFindCorners(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.portSetCorridor(i);
+            const n = context.corridor.findCorners(
+                &context.corner_points,
+                &context.corner_flags,
+                &context.corner_refs,
+                &context.query,
+                &context.filter,
+            );
+            sum +%= countSum(n);
+            if (n > 0) {
+                const last: usize = @intCast(n - 1);
+                sum +%= pointSum(context.corner_points[last]) +% context.corner_refs[last];
+            }
+        }
+        return sum;
+    }
+
+    fn baselineMovePosition(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.originalSetCorridor(i);
+            const moved = reference_crowd.ref_corridor_move_position(
+                context.original_corridor,
+                &context.steps[i],
+                context.original_query,
+                context.original_filter,
+            );
+            sum +%= @intFromBool(moved);
+            sum +%= context.originalCorridorSum();
+        }
+        return sum;
+    }
+
+    fn portMovePosition(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.portSetCorridor(i);
+            const moved = context.corridor.movePosition(
+                context.steps[i],
+                &context.query,
+                &context.filter,
+            );
+            sum +%= @intFromBool(moved);
+            sum +%= context.portCorridorSum();
+        }
+        return sum;
+    }
+
+    fn baselineOptimizeVisibility(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.originalSetCorridor(i);
+            reference_crowd.ref_corridor_optimize_path_visibility(
+                context.original_corridor,
+                &context.lookaheads[i],
+                path_optimization_range,
+                context.original_query,
+                context.original_filter,
+            );
+            sum +%= context.originalCorridorSum();
+        }
+        return sum;
+    }
+
+    fn portOptimizeVisibility(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.portSetCorridor(i);
+            context.corridor.optimizePathVisibility(
+                context.lookaheads[i],
+                path_optimization_range,
+                &context.query,
+                &context.filter,
+            );
+            sum +%= context.portCorridorSum();
+        }
+        return sum;
+    }
+
+    fn baselineOptimizeTopology(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.originalSetCorridor(i);
+            const changed = reference_crowd.ref_corridor_optimize_path_topology(
+                context.original_corridor,
+                context.original_query,
+                context.original_filter,
+            );
+            sum +%= @intFromBool(changed);
+            sum +%= context.originalCorridorSum();
+        }
+        return sum;
+    }
+
+    fn portOptimizeTopology(context: *PartsContext) u64 {
+        var sum: u64 = 0;
+        for (0..pair_count) |i| {
+            context.portSetCorridor(i);
+            const changed = context.corridor.optimizePathTopology(&context.query, &context.filter);
+            sum +%= @intFromBool(changed);
+            sum +%= context.portCorridorSum();
+        }
+        return sum;
+    }
+
+    fn baselineBoundary(context: *PartsContext) u64 {
+        const boundary = context.original_boundary;
+        var sum: u64 = 0;
+        for (&context.places.points, context.places.refs) |*point, ref| {
+            reference_crowd.ref_local_boundary_update(
+                boundary,
+                ref,
+                point,
+                collision_query_range,
+                context.original_query,
+                context.original_filter,
+            );
+            const n = reference_crowd.ref_local_boundary_get_segment_count(boundary);
+            sum +%= countSum(n);
+            if (n > 0) {
+                const segment = reference_crowd.ref_local_boundary_get_segment(boundary, n - 1);
+                for (segment) |value| sum +%= floatSum(value);
+            }
+        }
+        return sum;
+    }
+
+    fn portBoundary(context: *PartsContext) u64 {
+        const boundary = &context.boundary;
+        var sum: u64 = 0;
+        for (&context.places.points, context.places.refs) |*point, ref| {
+            boundary.update(
+                ref,
+                point.*,
+                collision_query_range,
+                &context.query,
+                &context.filter,
+            );
+            const n = boundary.getSegmentCount();
+            sum +%= countSum(n);
+            if (n > 0) {
+                const segment = boundary.getSegment(n - 1);
+                sum +%= pointSum(segment[0]) +% pointSum(segment[1]);
+            }
+        }
+        return sum;
+    }
+
+    fn baselineGrid(context: *PartsContext) u64 {
+        const grid = context.original_grid;
+        const points = context.places.points[0..crowd_agent_count_max];
+        var sum: u64 = 0;
+        reference_crowd.ref_prox_grid_clear(grid);
+        for (points, 0..) |point, i| {
+            reference_crowd.ref_prox_grid_add_item(
+                grid,
+                @intCast(i),
+                point[0] - agent_radius,
+                point[2] - agent_radius,
+                point[0] + agent_radius,
+                point[2] + agent_radius,
+            );
+        }
+        for (points) |point| {
+            const n = reference_crowd.ref_prox_grid_query_items(
+                grid,
+                point[0] - collision_query_range,
+                point[2] - collision_query_range,
+                point[0] + collision_query_range,
+                point[2] + collision_query_range,
+                &context.neighbours,
+                neighbour_count_max,
+            );
+            sum +%= countSum(n);
+            if (n > 0) sum +%= context.neighbours[@intCast(n - 1)];
+        }
+        return sum;
+    }
+
+    fn portGrid(context: *PartsContext) u64 {
+        const grid = &context.grid;
+        const points = context.places.points[0..crowd_agent_count_max];
+        var sum: u64 = 0;
+        grid.clear();
+        for (points, 0..) |point, i| {
+            grid.addItem(
+                @intCast(i),
+                point[0] - agent_radius,
+                point[2] - agent_radius,
+                point[0] + agent_radius,
+                point[2] + agent_radius,
+            );
+        }
+        for (points) |point| {
+            const n = grid.queryItems(
+                point[0] - collision_query_range,
+                point[2] - collision_query_range,
+                point[0] + collision_query_range,
+                point[2] + collision_query_range,
+                &context.neighbours,
+            );
+            sum +%= countSum(n);
+            if (n > 0) sum +%= context.neighbours[@intCast(n - 1)];
+        }
+        return sum;
+    }
+
+    fn baselineQueue(context: *PartsContext) u64 {
+        const queue = context.original_queue;
+        const places = context.places;
+        var sum: u64 = 0;
+        var first: usize = 0;
+        while (first < pair_count) : (first += queue_request_count) {
+            var handles: [queue_request_count]u32 = undefined;
+            for (&handles, first..) |*handle, i| {
+                handle.* = reference_crowd.ref_path_queue_request(
+                    queue,
+                    places.refs[i],
+                    places.refs[i + pair_count],
+                    &places.points[i],
+                    &places.points[i + pair_count],
+                    context.original_filter,
+                );
+            }
+            var waiting: usize = queue_request_count;
+            var read: [queue_request_count]bool = @splat(false);
+            for (0..queue_update_count_max) |_| {
+                if (waiting == 0) break;
+                reference_crowd.ref_path_queue_update(queue, queue_iteration_count);
+                for (handles, &read) |handle, *done| {
+                    if (done.*) continue;
+                    const status: detour.Status = @bitCast(
+                        reference_crowd.ref_path_queue_get_request_status(queue, handle),
+                    );
+                    if (status.in_progress) continue;
+                    var size: i32 = 0;
+                    sum +%= reference_crowd.ref_path_queue_get_path_result(
+                        queue,
+                        handle,
+                        &context.result_path,
+                        &size,
+                        path_count_max,
+                    );
+                    sum +%= countSum(size);
+                    if (size > 0) sum +%= context.result_path[@intCast(size - 1)];
+                    done.* = true;
+                    waiting -= 1;
+                }
+            }
+        }
+        return sum;
+    }
+
+    fn portQueue(context: *PartsContext) u64 {
+        const queue = &context.queue;
+        const places = context.places;
+        var sum: u64 = 0;
+        var first: usize = 0;
+        while (first < pair_count) : (first += queue_request_count) {
+            var handles: [queue_request_count]u32 = undefined;
+            for (&handles, first..) |*handle, i| {
+                handle.* = queue.request(
+                    places.refs[i],
+                    places.refs[i + pair_count],
+                    places.points[i],
+                    places.points[i + pair_count],
+                    &context.filter,
+                );
+            }
+            var waiting: usize = queue_request_count;
+            var read: [queue_request_count]bool = @splat(false);
+            for (0..queue_update_count_max) |_| {
+                if (waiting == 0) break;
+                queue.update(queue_iteration_count);
+                for (handles, &read) |handle, *done| {
+                    if (done.*) continue;
+                    if (queue.getRequestStatus(handle).in_progress) continue;
+                    var size: usize = 0;
+                    sum +%= statusSum(queue.getPathResult(handle, &context.result_path, &size));
+                    sum +%= size;
+                    if (size > 0) sum +%= context.result_path[size - 1];
+                    done.* = true;
+                    waiting -= 1;
+                }
+            }
+        }
+        return sum;
+    }
+};
+
 pub fn run(bench: *Bench) !void {
     try bench.group("Crowd");
 
@@ -1027,5 +1563,86 @@ pub fn run(bench: *Bench) !void {
             AvoidanceContext.baselineAdd,
             AvoidanceContext.portAdd,
         );
+    }
+
+    {
+        // The 128 paths between pairs of places, each set into a corridor
+        // at its start before the call.
+        const context = try bench.gpa.create(PartsContext);
+        defer bench.gpa.destroy(context);
+        try context.init(&world, &places);
+        defer context.deinit();
+        const PartRow = struct {
+            name: []const u8,
+            per: []const u8,
+            count: usize,
+            baseline: fn (*PartsContext) u64,
+            port: fn (*PartsContext) u64,
+        };
+        const part_rows = [_]PartRow{
+            .{
+                .name = "PathCorridor.setCorridor + findCorners",
+                .per = "path",
+                .count = pair_count,
+                .baseline = PartsContext.baselineFindCorners,
+                .port = PartsContext.portFindCorners,
+            },
+            // A step of up to a metre toward the first corner.
+            .{
+                .name = "PathCorridor.setCorridor + movePosition",
+                .per = "path",
+                .count = pair_count,
+                .baseline = PartsContext.baselineMovePosition,
+                .port = PartsContext.portMovePosition,
+            },
+            // A shortcut toward the fourth corner, or the last.
+            .{
+                .name = "PathCorridor.setCorridor + optimizePathVisibility",
+                .per = "path",
+                .count = pair_count,
+                .baseline = PartsContext.baselineOptimizeVisibility,
+                .port = PartsContext.portOptimizeVisibility,
+            },
+            .{
+                .name = "PathCorridor.setCorridor + optimizePathTopology",
+                .per = "path",
+                .count = pair_count,
+                .baseline = PartsContext.baselineOptimizeTopology,
+                .port = PartsContext.portOptimizeTopology,
+            },
+            // The walls within an agent's collision range, at every place.
+            .{
+                .name = "LocalBoundary.update",
+                .per = "call",
+                .count = place_count,
+                .baseline = PartsContext.baselineBoundary,
+                .port = PartsContext.portBoundary,
+            },
+            // 128 agents added, then each one's neighbours asked for.
+            .{
+                .name = "ProximityGrid.clear + addItem + queryItems",
+                .per = "agent",
+                .count = crowd_agent_count_max,
+                .baseline = PartsContext.baselineGrid,
+                .port = PartsContext.portGrid,
+            },
+            // The 128 paths asked for eight at a time, each update searching
+            // 100 iterations, as a crowd does.
+            .{
+                .name = "PathQueue.request + update + getPathResult",
+                .per = "path",
+                .count = pair_count,
+                .baseline = PartsContext.baselineQueue,
+                .port = PartsContext.portQueue,
+            },
+        };
+        inline for (part_rows) |part_row| {
+            try bench.compare(
+                .{ .name = part_row.name, .per = part_row.per, .count = part_row.count },
+                context,
+                part_row.baseline,
+                part_row.port,
+            );
+        }
     }
 }
