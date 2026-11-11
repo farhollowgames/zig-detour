@@ -119,6 +119,9 @@ const Context = struct {
     reference_use_costs: u32,
     reference_all_crossings: i32,
 
+    /// How many floats the random point row's timed call draws.
+    draw_count: usize = 0,
+
     /// Points of the level's ground with a polygon in reach.
     centers: [query_count][3]f32,
     /// Each center moved onto the polygon nearest it. The entry after the
@@ -1127,6 +1130,40 @@ const Context = struct {
         return sum;
     }
 
+    /// The port's random point query with its generator behind an opaque
+    /// call, as the original's `frand` callback always is: the compiler
+    /// cannot inline the draws.
+    fn portFindRandomPointOpaque(context: *Context) u64 {
+        var prng: std.Random.DefaultPrng = .init(random_seed);
+        var random = prng.random();
+        std.mem.doNotOptimizeAway(&random);
+        var sum: u64 = 0;
+        var ref: PolyRef = 0;
+        var point: [3]f32 = @splat(0);
+        for (0..query_count) |_| {
+            sum +%= statusSum(context.query.findRandomPoint(&context.filter, random, &ref, &point));
+            sum +%= ref +% pointSum(point);
+        }
+        return sum;
+    }
+
+    /// The original's draws alone: as many calls of its callback as one
+    /// timed call of the random point row makes.
+    fn baselineDrawsOnly(context: *Context) u64 {
+        support.seedReferenceRandom(random_seed);
+        var sum: u64 = 0;
+        for (0..context.draw_count) |_| sum +%= @as(u32, @bitCast(support.referenceRandom()));
+        return sum;
+    }
+
+    fn portDrawsOnly(context: *Context) u64 {
+        var prng: std.Random.DefaultPrng = .init(random_seed);
+        const random = prng.random();
+        var sum: u64 = 0;
+        for (0..context.draw_count) |_| sum +%= @as(u32, @bitCast(random.float(f32)));
+        return sum;
+    }
+
     fn baselineFindRandomPointAroundCircle(context: *Context) u64 {
         support.seedReferenceRandom(random_seed);
         var sum: u64 = 0;
@@ -1171,6 +1208,21 @@ const Context = struct {
 };
 
 /// A row of `query_count` queries.
+/// A generator that counts the 4-byte fills it hands out: one a float.
+const CountingRandom = struct {
+    inner: std.Random,
+    count: usize = 0,
+
+    fn fill(self: *CountingRandom, buf: []u8) void {
+        self.count += 1;
+        self.inner.bytes(buf);
+    }
+
+    fn random(self: *CountingRandom) std.Random {
+        return std.Random.init(self, fill);
+    }
+};
+
 fn queryRow(name: []const u8) Row {
     return .{ .name = name, .per = "query", .count = query_count };
 }
@@ -1337,6 +1389,30 @@ pub fn run(bench: *Bench) !void {
         &context,
         Context.baselineFindRandomPoint,
         Context.portFindRandomPoint,
+    );
+    {
+        // How many floats one timed call of the row above draws.
+        var counter: std.Random.DefaultPrng = .init(random_seed);
+        var counted: CountingRandom = .{ .inner = counter.random() };
+        var ref: PolyRef = 0;
+        var point: [3]f32 = @splat(0);
+        for (0..query_count) |_| {
+            _ = context.query.findRandomPoint(&context.filter, counted.random(), &ref, &point);
+        }
+        context.draw_count = counted.count;
+        std.debug.print("findRandomPoint: {d} draws in {d} queries\n", .{ counted.count, query_count });
+    }
+    try bench.compare(
+        queryRow("NavMeshQuery.findRandomPoint, the port's draws behind a call"),
+        &context,
+        Context.baselineFindRandomPoint,
+        Context.portFindRandomPointOpaque,
+    );
+    try bench.compare(
+        .{ .name = "the draws of findRandomPoint alone", .per = "query", .count = query_count },
+        &context,
+        Context.baselineDrawsOnly,
+        Context.portDrawsOnly,
     );
     try bench.compare(
         queryRow("NavMeshQuery.findRandomPointAroundCircle"),

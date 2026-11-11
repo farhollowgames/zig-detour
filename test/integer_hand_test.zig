@@ -412,6 +412,10 @@ const Reach = struct {
     /// The radius of the searches around a point, plus up to eight steps.
     radius: i32,
     radius_step: i32,
+    /// Whether ray casts run, the any-angle search's among them. On a
+    /// damaged tile a ray can walk between two polygons for ever, as the
+    /// original's does.
+    rays: bool = true,
 };
 
 const near_reach: Reach = .{
@@ -523,7 +527,7 @@ fn runQueries(
         sink.putSlice(detour.StraightPathFlags, corner_flags[0..corner_count]);
         sink.putSlice(PolyRef, corner_refs[0..corner_count]);
 
-        const find_options: detour.FindPathOptions = .{ .any_angle = i % 3 == 0 };
+        const find_options: detour.FindPathOptions = .{ .any_angle = reach.rays and i % 3 == 0 };
         sink.put(statusBits(query.initSlicedFindPath(
             start_ref,
             end_ref,
@@ -550,7 +554,9 @@ fn runQueries(
             .path_cost = 0,
         };
         const ray_options: detour.RaycastOptions = .{ .use_costs = i % 2 == 0 };
-        sink.put(statusBits(query.raycast(start_ref, from, end, filter, ray_options, &hit, 0)));
+        if (reach.rays) {
+            sink.put(statusBits(query.raycast(start_ref, from, end, filter, ray_options, &hit, 0)));
+        }
         sink.put(hit.t.num);
         sink.put(hit.t.den);
         sink.put(hit.hit_normal);
@@ -1933,4 +1939,248 @@ test "integer source: no float in the variant, the converter aside" {
             return error.FloatInIntegerSource;
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Damaged tiles (skeptic)
+// ---------------------------------------------------------------------------
+
+/// A random value near `count`: zero, one off either way, below zero or
+/// anything.
+fn skepticOddCount(random: std.Random, count: i32) i32 {
+    return switch (random.uintLessThan(u8, 6)) {
+        0 => 0,
+        1 => count +% 1,
+        2 => count -% 1,
+        3 => -1,
+        4 => std.math.maxInt(i32),
+        else => random.int(i32),
+    };
+}
+
+/// A coordinate within the bound, at it, or anywhere.
+fn skepticCoord(random: std.Random) i32 {
+    return switch (random.uintLessThan(u8, 4)) {
+        0 => coord_max,
+        1 => -coord_max,
+        2 => random.intRangeAtMost(i32, -coord_max, coord_max),
+        else => random.int(i32),
+    };
+}
+
+/// Damages a tile blob of either kind in place, the float and the integer
+/// tile sharing one layout, and returns how many of its bytes to hand on.
+fn skepticDamage(blob: []align(4) u8, random: std.Random) usize {
+    const Header = integer.MeshHeader;
+    const header: *Header = @ptrCast(blob.ptr);
+    const count = struct {
+        fn of(v: i32) usize {
+            return @intCast(@max(v, 0));
+        }
+    }.of;
+    const verts_at = std.mem.alignForward(usize, @sizeOf(Header), 4);
+    const polys_at = verts_at + 12 * count(header.vert_count);
+    const links_at = polys_at + @sizeOf(detour.nav_mesh.Poly) * count(header.poly_count);
+    const details_at = links_at + @sizeOf(detour.nav_mesh.Link) * count(header.link_count_max);
+    const detail_verts_at = details_at + std.mem.alignForward(
+        usize,
+        @sizeOf(detour.nav_mesh.PolyDetail) * count(header.detail_mesh_count),
+        4,
+    );
+    const tris_at = detail_verts_at + 12 * count(header.detail_vert_count);
+    const nodes_at = tris_at + 4 * count(header.detail_tri_count);
+    const connections_at = nodes_at + @sizeOf(detour.nav_mesh.BvNode) * count(header.bv_node_count);
+    const end = connections_at +
+        @sizeOf(integer.nav_mesh.OffMeshConnection) * count(header.off_mesh_connection_count);
+    std.debug.assert(end <= blob.len);
+
+    const polys: []align(4) detour.nav_mesh.Poly = @ptrCast(@alignCast(blob[polys_at..links_at]));
+    const details: []align(4) detour.nav_mesh.PolyDetail =
+        @ptrCast(@alignCast(blob[details_at..][0 .. @sizeOf(detour.nav_mesh.PolyDetail) *
+            count(header.detail_mesh_count)]));
+    const tris: []align(4) [4]u8 = @ptrCast(@alignCast(blob[tris_at..nodes_at]));
+    const nodes: []align(4) detour.nav_mesh.BvNode = @ptrCast(@alignCast(blob[nodes_at..connections_at]));
+    const connections: []align(4) integer.nav_mesh.OffMeshConnection =
+        @ptrCast(@alignCast(blob[connections_at..end]));
+    const coords: []align(4) i32 = @ptrCast(@alignCast(blob[verts_at..polys_at]));
+    const detail_coords: []align(4) i32 = @ptrCast(@alignCast(blob[detail_verts_at..tris_at]));
+    const vert_count: u32 = @intCast(count(header.vert_count));
+
+    switch (random.uintLessThan(u8, 13)) {
+        0 => for (0..random.intRangeAtMost(usize, 1, 4)) |_| {
+            blob[random.uintLessThan(usize, end)] ^= @as(u8, 1) << random.int(u3);
+        },
+        1 => {
+            const counts: [*]align(4) i32 = @ptrCast(&header.poly_count);
+            const which = random.uintLessThan(usize, 8);
+            counts[which] = skepticOddCount(random, counts[which]);
+        },
+        2 => if (polys.len > 0) {
+            const poly = &polys[random.uintLessThan(usize, polys.len)];
+            poly.verts[random.uintLessThan(usize, 6)] = if (random.boolean())
+                @truncate(vert_count)
+            else
+                random.int(u16);
+        },
+        3 => if (polys.len > 0) {
+            const poly = &polys[random.uintLessThan(usize, polys.len)];
+            poly.neighbours[random.uintLessThan(usize, 6)] = switch (random.uintLessThan(u8, 4)) {
+                0 => @truncate(random.uintLessThan(usize, polys.len + 2)),
+                1 => 0x8000 | random.int(u16),
+                2 => 0x8000 | (@as(u16, random.uintLessThan(u8, 4)) * 2),
+                else => random.int(u16),
+            };
+        },
+        4 => if (polys.len > 0) {
+            const poly = &polys[random.uintLessThan(usize, polys.len)];
+            if (random.boolean()) poly.vert_count = random.uintLessThan(u8, 8) else {
+                poly.area_and_type = random.int(u8);
+            }
+        },
+        5 => if (details.len > 0) {
+            const detail = &details[random.uintLessThan(usize, details.len)];
+            switch (random.uintLessThan(u8, 4)) {
+                0 => detail.vert_base = random.int(u32) >> random.int(u5),
+                1 => detail.tri_base = random.int(u32) >> random.int(u5),
+                2 => detail.vert_count = random.int(u8),
+                else => detail.tri_count = random.int(u8),
+            }
+        },
+        6 => if (tris.len > 0) {
+            tris[random.uintLessThan(usize, tris.len)][random.uintLessThan(usize, 4)] =
+                random.int(u8);
+        },
+        7 => if (nodes.len > 0) {
+            const node = &nodes[random.uintLessThan(usize, nodes.len)];
+            switch (random.uintLessThan(u8, 4)) {
+                0 => node.index = @intCast(polys.len),
+                1 => node.index = -random.intRangeAtMost(i32, 0, @intCast(nodes.len + 1)),
+                2 => node.index = random.int(i32),
+                else => random.bytes(std.mem.asBytes(node)[0..12]),
+            }
+        },
+        8 => if (connections.len > 0) {
+            const connection = &connections[random.uintLessThan(usize, connections.len)];
+            switch (random.uintLessThan(u8, 4)) {
+                0 => connection.poly = @truncate(random.uintLessThan(usize, polys.len + 2)),
+                1 => connection.side = random.int(u8),
+                2 => connection.radius = skepticCoord(random),
+                else => connection.pos[random.uintLessThan(usize, 2)][random.uintLessThan(usize, 3)] =
+                    skepticCoord(random),
+            }
+        },
+        9 => return random.uintLessThan(usize, end),
+        10 => for (0..random.intRangeAtMost(usize, 1, 3)) |_| {
+            const which = if (detail_coords.len > 0 and random.boolean()) detail_coords else coords;
+            if (which.len > 0) which[random.uintLessThan(usize, which.len)] = skepticCoord(random);
+        },
+        11 => switch (random.uintLessThan(u8, 6)) {
+            0 => header.x +%= random.intRangeAtMost(i32, -2, 2),
+            1 => header.layer = random.intRangeAtMost(i32, -1, 3),
+            2 => header.off_mesh_base = random.intRangeAtMost(i32, -1, @intCast(polys.len + 1)),
+            3 => header.walkable_climb = skepticCoord(random),
+            4 => header.bv_cell_size = random.intRangeAtMost(i32, -1, 3),
+            else => header.bounds_min[random.uintLessThan(usize, 3)] = skepticCoord(random),
+        },
+        else => {
+            const starts = [_]usize{ verts_at, polys_at, details_at, detail_verts_at, tris_at, nodes_at, connections_at, end };
+            const block = random.uintLessThan(usize, starts.len - 1);
+            random.bytes(blob[starts[block]..starts[block + 1]]);
+        },
+    }
+    return blob.len;
+}
+
+test "skeptic: integer addTile and tileFromFloat take damaged tiles safely or refuse them" {
+    const gpa = testing.allocator;
+    const grid = workload_grid;
+    var float_tiles: std.ArrayList([]align(4) u8) = .empty;
+    defer {
+        for (float_tiles.items) |t| gpa.free(t);
+        float_tiles.deinit(gpa);
+    }
+    for (0..grid.tiles) |y| {
+        for (0..grid.tiles) |x| {
+            const t = try grid.tile(gpa, @intCast(x), @intCast(y)) orelse continue;
+            try float_tiles.append(gpa, t);
+        }
+    }
+    const float_params = grid.params();
+    const integer_params: integer.NavMeshParams = .{
+        .origin = millimetres(float_params.origin),
+        .tile_width = @intFromFloat(@round(@as(f64, float_params.tile_width) * scale)),
+        .tile_height = @intFromFloat(@round(@as(f64, float_params.tile_height) * scale)),
+        .tile_count_max = float_params.tile_count_max,
+        .poly_count_max = float_params.poly_count_max,
+    };
+
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x736b6570746963));
+    const random = prng.random();
+    var points: [16][3]i32 = undefined;
+    const sink_bytes = try gpa.alloc(u8, points.len * 12 * 1024);
+    defer gpa.free(sink_bytes);
+    const no_rays: Reach = blk: {
+        var r = near_reach;
+        r.rays = false;
+        break :blk r;
+    };
+
+    var converter_refused: usize = 0;
+    var refused: usize = 0;
+    var queried: usize = 0;
+    for (0..1500) |case| {
+        errdefer std.debug.print("  skeptic damaged-tile case {d}\n", .{case});
+        const index = random.uintLessThan(usize, float_tiles.items.len);
+        const through_converter = case % 3 == 0;
+
+        var damaged: []align(4) u8 = undefined;
+        var len: usize = 0;
+        if (through_converter) {
+            const copy = try gpa.alignedAlloc(u8, .@"4", float_tiles.items[index].len);
+            defer gpa.free(copy);
+            @memcpy(copy, float_tiles.items[index]);
+            len = skepticDamage(copy, random);
+            damaged = integer.convert.tileFromFloat(gpa, copy[0..len], scale) catch {
+                converter_refused += 1;
+                continue;
+            };
+            len = damaged.len;
+        } else {
+            damaged = try integer.convert.tileFromFloat(gpa, float_tiles.items[index], scale);
+            len = skepticDamage(damaged, random);
+        }
+        defer gpa.free(damaged);
+
+        var nav: integer.NavMesh = .empty;
+        try testing.expect(nav.init(gpa, &integer_params).succeeded);
+        defer nav.deinit();
+        if (random.boolean()) {
+            const other = random.uintLessThan(usize, float_tiles.items.len);
+            if (other != index) {
+                const sound = try integer.convert.tileFromFloat(gpa, float_tiles.items[other], scale);
+                if (nav.addTile(sound, .{ .free_data = true }, 0, null).failed) gpa.free(sound);
+            }
+        }
+        var tile_ref: integer.TileRef = 0;
+        if (nav.addTile(damaged[0..len], .{}, 0, &tile_ref).failed) {
+            refused += 1;
+            continue;
+        }
+        const tile = nav.getTileByRef(tile_ref).?;
+        for (&points, 0..) |*p, i| {
+            p.* = if (i % 2 == 0 and tile.verts.len > 0)
+                tile.verts[random.uintLessThan(usize, tile.verts.len)]
+            else
+                grid.point(random);
+        }
+        var query: integer.NavMeshQuery = .empty;
+        try testing.expect(query.init(gpa, &nav, 128).succeeded);
+        defer query.deinit(gpa);
+        var sink: Sink = .{ .bytes = sink_bytes };
+        runQueries(&query, &points, no_rays, &sink);
+        queried += 1;
+    }
+    std.debug.print("skeptic damaged tiles: {d} refused by the converter, {d} by addTile, " ++
+        "{d} taken and queried\n", .{ converter_refused, refused, queried });
+    try testing.expect(queried > 200);
 }

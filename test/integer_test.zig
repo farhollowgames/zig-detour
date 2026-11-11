@@ -1195,11 +1195,13 @@ test "integer findPath and the sliced search: the same status, the same corridor
             // what the shortcut walks, not the portals' middles.
             if (mode != .sliced_any_angle and @abs(actual_cost - expected_cost) > limit) {
                 std.debug.print("corridor costs: float {d:.4} m over {d}, " ++
-                    "integer {d:.4} m over {d}\n", .{
+                    "integer {d:.4} m over {d}, status 0x{x}, mode {t}\n", .{
                     expected_cost,
                     expected.count,
                     actual_cost,
                     actual.count,
+                    expected.status,
+                    mode,
                 });
                 return error.TestOutsideTolerance;
             }
@@ -2309,8 +2311,8 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
     }
     try tally.expectEnough("findDistanceToWall");
     // Ties: 0 to 1 over seeds 0 to 6.
-    try testing.expect(ties <= 2);
     std.debug.print("findDistanceToWall: {d} ties between walls\n", .{ties});
+    try testing.expect(ties <= 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -2685,4 +2687,169 @@ test "integer undulating level at its own place: every query works, the same on 
         try std.Thread.spawn(.{}, runAtPlaceOnThread, .{ pair, &pair.nav, points, &hash });
     thread.join();
     try testing.expectEqual(first, hash);
+}
+
+// ---------------------------------------------------------------------------
+// The cases set aside as unstable (skeptic)
+// ---------------------------------------------------------------------------
+
+// The tests above compare only the stable cases and count the others. On an
+// unstable case the float port gives two or more answers for inputs a
+// millimetre apart, so the integer answer must be one of them: its status
+// and polygons one the float port gives for the input or a nudged input.
+
+test "skeptic: integer findNearestPoly on unstable cases gives one of the float answers" {
+    var unstable: usize = 0;
+    var unmatched: usize = 0;
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x6e656172));
+    const random = prng.random();
+    for (try pairs(), 0..) |*pair, level| {
+        for (0..400) |case| {
+            const filters = Filters.forCase(pair, case);
+            const p = pair.groundPoint(random, 1.5);
+            const half_extents = extents_choices[random.uintLessThan(usize, extents_choices.len)];
+            var answers: [5]NearestAnswer = undefined;
+            answers[0] = floatNearest(pair, p, half_extents, &filters.float);
+            var stable = true;
+            for (nudges, answers[1..]) |by, *answer| {
+                answer.* = floatNearest(pair, moved(p, by), half_extents, &filters.float);
+                if (!answers[0].sameDiscrete(answer.*)) stable = false;
+            }
+            if (stable) continue;
+            unstable += 1;
+
+            var ref: PolyRef = 0;
+            var point: [3]i32 = p;
+            var over = false;
+            const status =
+                pair.query.findNearestPoly(p, half_extents, &filters.int, &ref, &point, &over);
+            var matched = false;
+            for (answers) |answer| {
+                if (answer.status == statusBits(status) and answer.ref == ref) matched = true;
+            }
+            if (matched) continue;
+            // The exemptions the stable cases have.
+            if (ref != 0 and try boxesDiffer(pair, p, half_extents, &filters) and
+                try nearBorder(pair, ref, p, half_extents)) continue;
+            if (ref != 0 and answers[0].ref != 0 and try equallyNear(pair, p, answers[0].ref, ref)) {
+                continue;
+            }
+            unmatched += 1;
+            std.debug.print("findNearestPoly level {d} case {d}: integer ref {d} status 0x{x}, " ++
+                "float refs {d} {d} {d} {d} {d}\n", .{
+                level,          case,           ref,            statusBits(status),
+                answers[0].ref, answers[1].ref, answers[2].ref, answers[3].ref,
+                answers[4].ref,
+            });
+        }
+    }
+    std.debug.print("findNearestPoly: {d} unstable cases, {d} matched no float answer\n", .{
+        unstable,
+        unmatched,
+    });
+    try testing.expectEqual(@as(usize, 0), unmatched);
+}
+
+test "skeptic: integer raycast and moveAlongSurface on unstable cases give one of the float answers" {
+    var unstable_rays: usize = 0;
+    var unmatched_rays: usize = 0;
+    var unstable_moves: usize = 0;
+    var unmatched_moves: usize = 0;
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x736b6570));
+    const random = prng.random();
+    var rays: [5]RayAnswer = undefined;
+    var moves: [5]MoveAnswer = undefined;
+    var path: [result_count_max]PolyRef = undefined;
+    for (try pairs(), 0..) |*pair, level| {
+        var case: usize = 0;
+        var tries: usize = 0;
+        while (case < 300 and tries < 3000) : (tries += 1) {
+            const filters = Filters.forCase(pair, case);
+            const start = pair.startAt(pair.groundPoint(random, 0.3), &filters) orelse continue;
+            const reach: i32 = if (random.boolean()) 1500 else 8000;
+            const end = [3]i32{
+                start.pos[0] + random.intRangeAtMost(i32, -reach, reach),
+                start.pos[1] + random.intRangeAtMost(i32, -300, 300),
+                start.pos[2] + random.intRangeAtMost(i32, -reach, reach),
+            };
+            const options: detour.RaycastOptions = .{ .use_costs = case % 2 == 0 };
+            case += 1;
+
+            floatRay(pair, start, end, @splat(0), &filters.float, options, &rays[0]);
+            var stable = true;
+            for (nudges, rays[1..]) |by, *answer| {
+                floatRay(pair, start, end, by, &filters.float, options, answer);
+                if (!rays[0].sameDiscrete(answer)) stable = false;
+            }
+            if (!stable) {
+                unstable_rays += 1;
+                var hit: integer.RaycastHit = .{
+                    .t = .zero,
+                    .hit_normal = @splat(0),
+                    .hit_edge_index = 0,
+                    .path = &path,
+                    .path_count = 0,
+                    .path_cost = 0,
+                };
+                const status =
+                    pair.query.raycast(start.ref, start.pos, end, &filters.int, options, &hit, 0);
+                var matched = false;
+                for (&rays) |*answer| {
+                    if (answer.status == statusBits(status) and
+                        answer.hit == !hit.t.isNever() and
+                        answer.edge == hit.hit_edge_index and
+                        std.mem.eql(PolyRef, answer.path[0..answer.count], path[0..hit.path_count]))
+                    {
+                        matched = true;
+                    }
+                }
+                if (!matched) {
+                    unmatched_rays += 1;
+                    std.debug.print("raycast level {d} case {d}: integer {d} polygons, edge {d}, " ++
+                        "hit {}; float {d} polygons, edge {d}, hit {}\n", .{
+                        level,            case,          hit.path_count, hit.hit_edge_index,
+                        !hit.t.isNever(), rays[0].count, rays[0].edge,   rays[0].hit,
+                    });
+                }
+            }
+
+            floatMove(pair, start, end, @splat(0), &filters.float, &moves[0]);
+            stable = true;
+            for (nudges, moves[1..]) |by, *answer| {
+                floatMove(pair, start, end, by, &filters.float, answer);
+                if (!moves[0].sameDiscrete(answer)) stable = false;
+            }
+            if (!stable) {
+                unstable_moves += 1;
+                var result: [3]i32 = @splat(0);
+                var count: usize = 0;
+                const status = pair.query.moveAlongSurface(
+                    start.ref,
+                    start.pos,
+                    end,
+                    &filters.int,
+                    &result,
+                    &path,
+                    &count,
+                );
+                var matched = false;
+                for (&moves) |*answer| {
+                    if (answer.status == statusBits(status) and
+                        std.mem.eql(PolyRef, answer.visited[0..answer.count], path[0..count]))
+                    {
+                        matched = true;
+                    }
+                }
+                if (!matched) {
+                    unmatched_moves += 1;
+                    std.debug.print("moveAlongSurface level {d} case {d}: integer visited {d}, " ++
+                        "float {d}\n", .{ level, case, count, moves[0].count });
+                }
+            }
+        }
+    }
+    std.debug.print("unstable cases: raycast {d}, {d} unmatched; moveAlongSurface {d}, " ++
+        "{d} unmatched\n", .{ unstable_rays, unmatched_rays, unstable_moves, unmatched_moves });
+    try testing.expectEqual(@as(usize, 0), unmatched_rays);
+    try testing.expectEqual(@as(usize, 0), unmatched_moves);
 }

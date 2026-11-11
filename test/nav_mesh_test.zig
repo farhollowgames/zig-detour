@@ -2087,3 +2087,45 @@ test "addTile: damaged tiles are refused, or taken as the original takes them" {
     try testing.expect(compared > 200);
     try testing.expect(port_only > 50);
 }
+
+test "skeptic: removeTile and addTile in one entry until its salt wraps" {
+    const gpa = testing.allocator;
+    var level: support.Level = try .init(gpa, support.nav_test_obj, support.tiled_config, .{});
+    defer level.deinit();
+    var blobs: TileBlobs = try .init(gpa, &level);
+    defer blobs.deinit();
+
+    var params = level.navMeshParams();
+    // Eleven tile bits and eleven polygon bits leave a 32-bit reference ten
+    // bits of salt, the fewest allowed; a 64-bit one keeps sixteen.
+    params.max_tiles = 2048;
+    params.max_polys = 2048;
+    var pair: Pair = undefined;
+    const ready = try pair.init(gpa, params);
+    defer pair.deinit();
+    try testing.expect(ready);
+
+    const blob = blobs.items.items[0];
+    var first: TileRef = 0;
+    try testing.expect((try pair.add(blob, .{ .free_data = true }, 0, &first)).succeeded);
+    const first_poly = pair.nav.getPolyRefBase(pair.nav.getTileByRef(first).?);
+    var ref = first;
+    const cycles: usize = if (nm.polyref64) (1 << 16) + 3 else (1 << 10) + 3;
+    var revived: usize = 0;
+    for (0..cycles) |cycle| {
+        errdefer std.debug.print("  cycle {d}\n", .{cycle});
+        try testing.expect((try expectSameRemoval(pair.reference_nav, &pair.nav, ref, null)).succeeded);
+        // The freed entry heads the free list, so the tile goes back there.
+        var next: TileRef = 0;
+        try testing.expect((try pair.add(blob, .{ .free_data = true }, 0, &next)).succeeded);
+        try testing.expect(next != ref);
+        ref = next;
+        const expected_valid = reference.ref_nav_mesh_is_valid_poly_ref(pair.reference_nav, first_poly);
+        try testing.expectEqual(expected_valid, pair.nav.isValidPolyRef(first_poly));
+        if (expected_valid) revived += 1;
+    }
+    try expectSameMeshes(pair.reference_nav, &pair.nav);
+    // The salt came round to the first one's again: an old reference
+    // names the new tile, on both sides.
+    try testing.expect(revived >= 1);
+}
