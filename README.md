@@ -17,9 +17,11 @@ Zig's standard library, and every function that allocates takes the allocator
 it uses.
 
 **The port is in progress.** Every part is translated; the tests cover the
-navigation mesh, the tile builder, the geometry helpers and the proximity grid
-so far. [`STATUS.md`](STATUS.md) lists every function, option and mode of the
-original with its state, and what comes next.
+navigation mesh, the tile builder, the geometry helpers, the proximity grid
+and the tile cache so far. [`STATUS.md`](STATUS.md) lists every function,
+option and mode of the original with its state, and what comes next.
+[`doc/parity.md`](doc/parity.md) lists every place where the port differs
+from the original on purpose.
 
 This port was written by Claude (Anthropic's AI model) for Farhollow Games.
 How the code is verified can be found

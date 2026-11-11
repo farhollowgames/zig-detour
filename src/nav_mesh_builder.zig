@@ -431,6 +431,8 @@ pub fn createNavMeshData(
     // detail triangles.
     var unique_detail_vert_count: i32 = 0;
     var detail_tri_count: i32 = 0;
+    // The triangles the fans of polygons take when there is no detail mesh.
+    var fan_tri_count: usize = 0;
     if (params.detail_meshes) |detail_meshes| {
         // The detail mesh's own triangles are stored.
         detail_tri_count = params.detail_tri_count;
@@ -457,6 +459,7 @@ pub fn createNavMeshData(
                 nv += 1;
             }
             detail_tri_count += nv - 2;
+            if (nv > 2) fan_tri_count += @intCast(nv - 2);
         }
     }
     // Negative from a negative `detail_tri_count`, or from polygons of
@@ -485,6 +488,13 @@ pub fn createNavMeshData(
     const data_size = header_size + verts_size + polys_size + links_size +
         detail_meshes_size + detail_verts_size + detail_tris_size +
         bv_tree_size + off_mesh_cons_size;
+
+    // A polygon of fewer than two vertices takes room away from the fans of
+    // the others, which then run on into the blocks that follow. They must
+    // not run past the tile.
+    if (@sizeOf([4]u8) * fan_tri_count > detail_tris_size + bv_tree_size + off_mesh_cons_size) {
+        return error.InvalidParam;
+    }
 
     const data = try gpa.alignedAlloc(u8, .@"4", data_size);
     errdefer gpa.free(data);

@@ -20,6 +20,7 @@ pub const path_queue = @import("path_queue.zig");
 pub const crowd = @import("crowd.zig");
 pub const tile_cache_builder = @import("tile_cache_builder.zig");
 pub const tile_cache = @import("tile_cache.zig");
+pub const integer = @import("integer.zig");
 
 pub const Status = status.Status;
 
@@ -81,4 +82,5 @@ test {
     _ = crowd;
     _ = tile_cache_builder;
     _ = tile_cache;
+    _ = integer;
 }

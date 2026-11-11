@@ -10,6 +10,9 @@ comptime {
     _ = @import("common_test.zig");
     _ = @import("layout_test.zig");
     _ = @import("nav_mesh_test.zig");
+    _ = @import("nav_mesh_builder_test.zig");
+    _ = @import("determinism_test.zig");
+    _ = @import("tile_cache_test.zig");
     _ = @import("proximity_grid_test.zig");
 }
 

@@ -20,7 +20,7 @@ original, and why.
 | library | upstream header | Zig file | entries | not started | ported | oracle-tested | benchmarked | reviewed |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Detour | DetourNavMesh.h | `src/nav_mesh.zig` | 69 |  |  | 69 |  |  |
-| Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  | 2 | 2 |  |  |
+| Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  |  | 4 |  |  |
 | Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  | 44 | 1 |  |  |
 | Detour | DetourNode.h | `src/node.zig` | 33 |  | 33 |  |  |  |
 | Detour | DetourCommon.h | `src/common.zig` | 44 |  |  | 44 |  |  |
@@ -32,9 +32,9 @@ original, and why.
 | DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  | 8 |  |  |  |
 | DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  | 33 |  |  |  |
 | DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 10 |  |  |
-| DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  | 49 |  |  |  |
+| DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 49 |  |  |
 | DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  | 30 |  |  |  |
-| | | **all** | 415 |  | 271 | 144 |  |  |
+| | | **all** | 415 |  | 220 | 195 |  |  |
 
 The differential tests run twice: with every build switch off, and with every one on.
 
@@ -148,8 +148,8 @@ yes.
 | --- | --- | --- |
 | `dtNavMeshCreateParams`: `verts`, `vertCount`, `polys`, `polyFlags`, `polyAreas`, `polyCount`, `nvp`, `detailMeshes`, `detailVerts`, `detailVertsCount`, `detailTris`, `detailTriCount`, `offMeshConVerts`, `offMeshConRad`, `offMeshConFlags`, `offMeshConAreas`, `offMeshConDir`, `offMeshConUserID`, `offMeshConCount`, `userId`, `tileX`, `tileY`, `tileLayer`, `bmin`, `bmax`, `walkableHeight`, `walkableRadius`, `walkableClimb`, `cs`, `ch`, `buildBvTree` | `NavMeshCreateParams` | oracle-tested |
 | `dtCreateNavMeshData` | `createNavMeshData` | oracle-tested |
-| `dtNavMeshHeaderSwapEndian` | `navMeshHeaderSwapEndian` | ported |
-| `dtNavMeshDataSwapEndian` | `navMeshDataSwapEndian` | ported |
+| `dtNavMeshHeaderSwapEndian` | `navMeshHeaderSwapEndian` | oracle-tested |
+| `dtNavMeshDataSwapEndian` | `navMeshDataSwapEndian` | oracle-tested |
 
 ### DetourNavMeshQuery.h → `src/nav_mesh_query.zig`
 
@@ -477,55 +477,55 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `dtObstacleRef` | `ObstacleRef` | ported |
-| `dtCompressedTileRef` | `CompressedTileRef` | ported |
-| `dtCompressedTileFlags`: `DT_COMPRESSEDTILE_FREE_DATA` | `compressed_tile_free_data` | ported |
-| `dtCompressedTile`: `salt`, `header`, `compressed`, `compressedSize`, `data`, `dataSize`, `flags`, `next` | `CompressedTile` | ported |
-| `ObstacleState`: `DT_OBSTACLE_EMPTY`, `DT_OBSTACLE_PROCESSING`, `DT_OBSTACLE_PROCESSED`, `DT_OBSTACLE_REMOVING` | `ObstaclePhase` | ported |
-| `ObstacleType`: `DT_OBSTACLE_CYLINDER`, `DT_OBSTACLE_BOX`, `DT_OBSTACLE_ORIENTED_BOX` | `ObstacleType` | ported |
-| `dtObstacleCylinder`: `pos`, `radius`, `height` | `ObstacleCylinder` | ported |
-| `dtObstacleBox`: `bmin`, `bmax` | `ObstacleBox` | ported |
-| `dtObstacleOrientedBox`: `center`, `halfExtents`, `rotAux` | `ObstacleOrientedBox` | ported |
-| `DT_MAX_TOUCHED_TILES` | `touched_tile_count_max` | ported |
-| `dtTileCacheObstacle`: `touched`, `pending`, `salt`, `type`, `state`, `ntouched`, `npending`, `next` | `Obstacle` | ported |
-| `dtTileCacheParams`: `orig`, `cs`, `ch`, `width`, `height`, `walkableHeight`, `walkableRadius`, `walkableClimb`, `maxSimplificationError`, `maxTiles`, `maxObstacles` | `TileCacheParams` | ported |
-| `dtTileCacheMeshProcess` | `MeshProcess` | ported |
-| `dtTileCacheMeshProcess::process` | `MeshProcess.process` | ported |
-| `dtTileCache` | `TileCache` | ported |
-| `dtTileCache::dtTileCache` | `TileCache.empty` | ported |
-| `dtTileCache::~dtTileCache` | `TileCache.deinit` | ported |
-| `dtTileCache::getAlloc` | `TileCache.getAlloc` | ported |
-| `dtTileCache::getCompressor` | `TileCache.getCompressor` | ported |
-| `dtTileCache::getParams` | `TileCache.getParams` | ported |
-| `dtTileCache::getTileCount` | `TileCache.getTileCount` | ported |
-| `dtTileCache::getTile` | `TileCache.getTile` | ported |
-| `dtTileCache::getObstacleCount` | `TileCache.getObstacleCount` | ported |
-| `dtTileCache::getObstacle` | `TileCache.getObstacle` | ported |
-| `dtTileCache::getObstacleByRef` | `TileCache.getObstacleByRef` | ported |
-| `dtTileCache::getObstacleRef` | `TileCache.getObstacleRef` | ported |
-| `dtTileCache::init` | `TileCache.init` | ported |
-| `dtTileCache::getTilesAt` | `TileCache.getTilesAt` | ported |
-| `dtTileCache::getTileAt` | `TileCache.getTileAt` | ported |
-| `dtTileCache::getTileRef` | `TileCache.getTileRef` | ported |
-| `dtTileCache::getTileByRef` | `TileCache.getTileByRef` | ported |
-| `dtTileCache::addTile` | `TileCache.addTile` | ported |
-| `dtTileCache::removeTile` | `TileCache.removeTile` | ported |
-| `dtTileCache::addObstacle` | `TileCache.addObstacle` | ported |
-| `dtTileCache::addBoxObstacle(bmin, bmax, result)` | `TileCache.addBoxObstacle` | ported |
-| `dtTileCache::addBoxObstacle(center, halfExtents, yRadians, result)` | `TileCache.addOrientedBoxObstacle` | ported |
-| `dtTileCache::removeObstacle` | `TileCache.removeObstacle` | ported |
-| `dtTileCache::queryTiles` | `TileCache.queryTiles` | ported |
-| `dtTileCache::update` | `TileCache.update` | ported |
-| `dtTileCache::buildNavMeshTilesAt` | `TileCache.buildNavMeshTilesAt` | ported |
-| `dtTileCache::buildNavMeshTile` | `TileCache.buildNavMeshTile` | ported |
-| `dtTileCache::calcTightTileBounds` | `TileCache.calcTightTileBounds` | ported |
-| `dtTileCache::getObstacleBounds` | `TileCache.getObstacleBounds` | ported |
-| `dtTileCache::encodeTileId` | `TileCache.encodeTileId` | ported |
-| `dtTileCache::decodeTileIdSalt` | `TileCache.decodeTileIdSalt` | ported |
-| `dtTileCache::decodeTileIdTile` | `TileCache.decodeTileIdTile` | ported |
-| `dtTileCache::encodeObstacleId` | `TileCache.encodeObstacleId` | ported |
-| `dtTileCache::decodeObstacleIdSalt` | `TileCache.decodeObstacleIdSalt` | ported |
-| `dtTileCache::decodeObstacleIdObstacle` | `TileCache.decodeObstacleIdObstacle` | ported |
+| `dtObstacleRef` | `ObstacleRef` | oracle-tested |
+| `dtCompressedTileRef` | `CompressedTileRef` | oracle-tested |
+| `dtCompressedTileFlags`: `DT_COMPRESSEDTILE_FREE_DATA` | `compressed_tile_free_data` | oracle-tested |
+| `dtCompressedTile`: `salt`, `header`, `compressed`, `compressedSize`, `data`, `dataSize`, `flags`, `next` | `CompressedTile` | oracle-tested |
+| `ObstacleState`: `DT_OBSTACLE_EMPTY`, `DT_OBSTACLE_PROCESSING`, `DT_OBSTACLE_PROCESSED`, `DT_OBSTACLE_REMOVING` | `ObstaclePhase` | oracle-tested |
+| `ObstacleType`: `DT_OBSTACLE_CYLINDER`, `DT_OBSTACLE_BOX`, `DT_OBSTACLE_ORIENTED_BOX` | `ObstacleType` | oracle-tested |
+| `dtObstacleCylinder`: `pos`, `radius`, `height` | `ObstacleCylinder` | oracle-tested |
+| `dtObstacleBox`: `bmin`, `bmax` | `ObstacleBox` | oracle-tested |
+| `dtObstacleOrientedBox`: `center`, `halfExtents`, `rotAux` | `ObstacleOrientedBox` | oracle-tested |
+| `DT_MAX_TOUCHED_TILES` | `touched_tile_count_max` | oracle-tested |
+| `dtTileCacheObstacle`: `touched`, `pending`, `salt`, `type`, `state`, `ntouched`, `npending`, `next` | `Obstacle` | oracle-tested |
+| `dtTileCacheParams`: `orig`, `cs`, `ch`, `width`, `height`, `walkableHeight`, `walkableRadius`, `walkableClimb`, `maxSimplificationError`, `maxTiles`, `maxObstacles` | `TileCacheParams` | oracle-tested |
+| `dtTileCacheMeshProcess` | `MeshProcess` | oracle-tested |
+| `dtTileCacheMeshProcess::process` | `MeshProcess.process` | oracle-tested |
+| `dtTileCache` | `TileCache` | oracle-tested |
+| `dtTileCache::dtTileCache` | `TileCache.empty` | oracle-tested |
+| `dtTileCache::~dtTileCache` | `TileCache.deinit` | oracle-tested |
+| `dtTileCache::getAlloc` | `TileCache.getAlloc` | oracle-tested |
+| `dtTileCache::getCompressor` | `TileCache.getCompressor` | oracle-tested |
+| `dtTileCache::getParams` | `TileCache.getParams` | oracle-tested |
+| `dtTileCache::getTileCount` | `TileCache.getTileCount` | oracle-tested |
+| `dtTileCache::getTile` | `TileCache.getTile` | oracle-tested |
+| `dtTileCache::getObstacleCount` | `TileCache.getObstacleCount` | oracle-tested |
+| `dtTileCache::getObstacle` | `TileCache.getObstacle` | oracle-tested |
+| `dtTileCache::getObstacleByRef` | `TileCache.getObstacleByRef` | oracle-tested |
+| `dtTileCache::getObstacleRef` | `TileCache.getObstacleRef` | oracle-tested |
+| `dtTileCache::init` | `TileCache.init` | oracle-tested |
+| `dtTileCache::getTilesAt` | `TileCache.getTilesAt` | oracle-tested |
+| `dtTileCache::getTileAt` | `TileCache.getTileAt` | oracle-tested |
+| `dtTileCache::getTileRef` | `TileCache.getTileRef` | oracle-tested |
+| `dtTileCache::getTileByRef` | `TileCache.getTileByRef` | oracle-tested |
+| `dtTileCache::addTile` | `TileCache.addTile` | oracle-tested |
+| `dtTileCache::removeTile` | `TileCache.removeTile` | oracle-tested |
+| `dtTileCache::addObstacle` | `TileCache.addObstacle` | oracle-tested |
+| `dtTileCache::addBoxObstacle(bmin, bmax, result)` | `TileCache.addBoxObstacle` | oracle-tested |
+| `dtTileCache::addBoxObstacle(center, halfExtents, yRadians, result)` | `TileCache.addOrientedBoxObstacle` | oracle-tested |
+| `dtTileCache::removeObstacle` | `TileCache.removeObstacle` | oracle-tested |
+| `dtTileCache::queryTiles` | `TileCache.queryTiles` | oracle-tested |
+| `dtTileCache::update` | `TileCache.update` | oracle-tested |
+| `dtTileCache::buildNavMeshTilesAt` | `TileCache.buildNavMeshTilesAt` | oracle-tested |
+| `dtTileCache::buildNavMeshTile` | `TileCache.buildNavMeshTile` | oracle-tested |
+| `dtTileCache::calcTightTileBounds` | `TileCache.calcTightTileBounds` | oracle-tested |
+| `dtTileCache::getObstacleBounds` | `TileCache.getObstacleBounds` | oracle-tested |
+| `dtTileCache::encodeTileId` | `TileCache.encodeTileId` | oracle-tested |
+| `dtTileCache::decodeTileIdSalt` | `TileCache.decodeTileIdSalt` | oracle-tested |
+| `dtTileCache::decodeTileIdTile` | `TileCache.decodeTileIdTile` | oracle-tested |
+| `dtTileCache::encodeObstacleId` | `TileCache.encodeObstacleId` | oracle-tested |
+| `dtTileCache::decodeObstacleIdSalt` | `TileCache.decodeObstacleIdSalt` | oracle-tested |
+| `dtTileCache::decodeObstacleIdObstacle` | `TileCache.decodeObstacleIdObstacle` | oracle-tested |
 
 ### DetourTileCacheBuilder.h → `src/tile_cache_builder.zig`
 
@@ -566,18 +566,25 @@ yes.
 
 Not in upstream: the same queries over whole-millimetre coordinates, for a server that
 must give the same answer on every machine. `doc/integer-design.md` gives its units,
-scales, overflow bounds and tolerances.
+scales, overflow bounds and tolerances. Here **built** means it compiles and passes its
+own unit tests, and **checked** means the tests compare it with the float port within the
+design's tolerances.
 
 | piece | Zig | state |
 | --- | --- | --- |
-| design: units, scales, overflow bounds, tolerances | `doc/integer-design.md` | not started |
-| vector and geometry helpers | `src/integer/common.zig` | not started |
-| navigation mesh, tile conversion from the float format | `src/integer/nav_mesh.zig` | not started |
+| design: units, scales, overflow bounds, tolerances | `doc/integer-design.md` | written |
+| vector and geometry helpers | `src/integer/common.zig` | built |
+| navigation mesh, tile conversion from the float format | `src/integer/nav_mesh.zig`, `src/integer/convert.zig` | not started |
 | node pool and queue | `src/integer/node.zig` | not started |
 | queries | `src/integer/nav_mesh_query.zig` | not started |
 | checked against the float port within the stated tolerances | | not started |
 | exact self-determinism, on 1, 2 and N threads | | not started |
+| crowd and tile cache over integers | | left out, see `doc/integer-design.md` |
 
 ## Next
 
-1. Integrate the differential tests of the queries, the crowd and the tile cache.
+1. Integrate the differential tests of the queries, the crowd pieces and the tile cache
+   builder.
+2. The integer navigation mesh and queries, their tolerance tests against the float port
+   and their determinism tests.
+3. `zig build bench`, and its tables in the README.
