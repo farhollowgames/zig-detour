@@ -90,10 +90,14 @@ under those seeds until the author decides whether to widen it:
 - `findDistanceToWall`: one normal 0.016 off, from two walls at nearly the
   same distance (seed 4).
 
-Two more are not explained yet, both on the dungeon level under seed 5: a
-`raycast` hit point 23 mm lower than the float port's (12.8 mm allowed), and
-a `moveAlongSurface` end at a height 405 mm from the float port's. They need
-a look before any tolerance is set.
+Two cases on the dungeon level under seed 5 were test errors, now fixed. A
+walk's end 0.28 mm outside a polygon edge on the integer mesh lay 0.5 mm
+inside it on the float mesh, so one side kept the target's height and the
+other took the wall's, 405 mm apart; the test now counts a case as stable
+only if the float walk ends the same way, at the target or on a wall, for
+every nudge. A ray rising 4.9 m over 0.3 m across had its hit height held
+to the tolerance across the ground; the test now scales it by the ray's
+rise.
 
 Queries on separate `NavMeshQuery` values over one shared `NavMesh` give the
 same bytes on 1, 2 and many threads, the way the original documents its use

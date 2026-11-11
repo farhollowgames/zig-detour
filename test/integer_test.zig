@@ -1781,8 +1781,14 @@ test "integer raycast: the same polygons and wall; hit point, normal and cost wi
                 else
                     1.0;
                 const limit = tolerance / @max(sine, 1.0 / 1024.0);
+                // The point moves along the ray, so its height moves by
+                // the ray's rise for each step across.
+                const dy = @abs(@as(f64, to[1]) - from[1]);
+                const rise = if (ray_length > 0) dy / ray_length else 0;
+                const height_limit = limit * @max(1.0, rise);
                 errdefer std.debug.print("  sine between ray and wall {d:.5}\n", .{sine});
-                try expectNear("hit point", float_point, hit.point(start.pos, end), limit, limit);
+                const point = hit.point(start.pos, end);
+                try expectNear("hit point", float_point, point, limit, height_limit);
                 try expectNearNormal(expected.normal, hit.hit_normal, 1.0 / 1024.0);
             }
             if (options.use_costs) try expectNearCost(expected.cost, hit.path_cost, hit.path_count);
@@ -1796,9 +1802,14 @@ const MoveAnswer = struct {
     result: [3]f32,
     visited: [result_count_max]PolyRef,
     count: usize,
+    /// Whether the walk ended at the target, inside a polygon, rather than
+    /// on a wall. Inside, the end keeps the target's height; on a wall it
+    /// takes the wall's, so the two can stand far apart in height at one
+    /// place.
+    reached: bool,
 
     fn sameDiscrete(a: *const MoveAnswer, b: *const MoveAnswer) bool {
-        return a.status == b.status and
+        return a.status == b.status and a.reached == b.reached and
             std.mem.eql(PolyRef, a.visited[0..a.count], b.visited[0..b.count]);
     }
 };
@@ -1813,15 +1824,17 @@ fn floatMove(
 ) void {
     answer.count = 0;
     answer.result = @splat(0);
+    const target = metres(moved(end, by));
     answer.status = statusBits(pair.float_query.moveAlongSurface(
         start.ref,
         metres(moved(start.pos, by)),
-        metres(moved(end, by)),
+        target,
         filter,
         &answer.result,
         &answer.visited,
         &answer.count,
     ));
+    answer.reached = std.mem.eql(f32, &answer.result, &target);
 }
 
 test "integer moveAlongSurface: the same polygons visited, the end within tolerance" {
