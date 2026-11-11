@@ -733,6 +733,56 @@ pub fn navMeshHeaderSwapEndian(data: []u8) bool {
     return true;
 }
 
+/// The byte order that swaps a record of type `T`: `halfword_count`
+/// halfwords from `start`, then `word_count` words; every other byte stays.
+fn halfwordOrder(
+    comptime T: type,
+    comptime start: usize,
+    comptime halfword_count: usize,
+    comptime word_count: usize,
+) [@sizeOf(T)]i32 {
+    var order: [@sizeOf(T)]i32 = undefined;
+    for (&order, 0..) |*index, i| index.* = i;
+    for (0..halfword_count) |h| {
+        order[start + 2 * h] = start + 2 * h + 1;
+        order[start + 2 * h + 1] = start + 2 * h;
+    }
+    const words_start = start + 2 * halfword_count;
+    for (0..word_count) |w| {
+        for (0..4) |b| order[words_start + 4 * w + b] = words_start + 4 * w + 3 - b;
+    }
+    return order;
+}
+
+/// Reorders the bytes of each record of type `T` in `bytes` by `order`, one
+/// record as one vector.
+fn swapRecords(comptime T: type, bytes: []u8, comptime order: [@sizeOf(T)]i32) void {
+    const size = @sizeOf(T);
+    var offset: usize = 0;
+    while (offset < bytes.len) : (offset += size) {
+        const record: *align(1) [size]u8 = bytes[offset..][0..size];
+        const vector: @Vector(size, u8) = record.*;
+        record.* = @shuffle(u8, vector, undefined, order);
+    }
+}
+
+/// Reverses the bytes of every 4-byte word of `bytes`, whose length is a
+/// multiple of four: sixteen words at a time, then one at a time.
+fn swapWords(bytes: []u8) void {
+    const lanes = 16;
+    const chunk_size = lanes * 4;
+    var offset: usize = 0;
+    while (offset + chunk_size <= bytes.len) : (offset += chunk_size) {
+        const words: *align(1) [lanes]u32 = @ptrCast(bytes[offset..][0..chunk_size]);
+        const vector: @Vector(lanes, u32) = words.*;
+        words.* = @byteSwap(vector);
+    }
+    while (offset < bytes.len) : (offset += 4) {
+        const word: *align(1) u32 = @ptrCast(bytes[offset..][0..4]);
+        word.* = @byteSwap(word.*);
+    }
+}
+
 /// Swaps the byte order of everything after the header of a tile's bytes,
 /// in place. The header must be in this machine's byte order, since its
 /// counts say where the blocks are: see `navMeshHeaderSwapEndian` for the
@@ -782,24 +832,18 @@ pub fn navMeshDataSwapEndian(data: []u8) bool {
     // pointer that asks for no alignment.
     const bytesAsSlice = std.mem.bytesAsSlice;
     var offset = header_size;
-    const verts = bytesAsSlice(f32, data[offset..][0 .. @sizeOf([3]f32) * vert_count]);
+    const verts = data[offset..][0 .. @sizeOf([3]f32) * vert_count];
     offset += verts_size;
-    const polys = bytesAsSlice(Poly, data[offset..][0 .. @sizeOf(Poly) * poly_count]);
+    const polys = data[offset..][0 .. @sizeOf(Poly) * poly_count];
     offset += polys_size;
     offset += links_size;
-    const detail_meshes = bytesAsSlice(
-        PolyDetail,
-        data[offset..][0 .. @sizeOf(PolyDetail) * detail_mesh_count],
-    );
+    const detail_meshes = data[offset..][0 .. @sizeOf(PolyDetail) * detail_mesh_count];
     offset += detail_meshes_size;
-    const detail_verts = bytesAsSlice(
-        f32,
-        data[offset..][0 .. @sizeOf([3]f32) * detail_vert_count],
-    );
+    const detail_verts = data[offset..][0 .. @sizeOf([3]f32) * detail_vert_count];
     offset += detail_verts_size;
     // The detail triangles are single bytes, which have no byte order.
     offset += detail_tris_size;
-    const bv_tree = bytesAsSlice(BvNode, data[offset..][0 .. @sizeOf(BvNode) * bv_node_count]);
+    const bv_tree = data[offset..][0 .. @sizeOf(BvNode) * bv_node_count];
     offset += bv_tree_size;
     const off_mesh_cons = bytesAsSlice(
         OffMeshConnection,
@@ -807,34 +851,20 @@ pub fn navMeshDataSwapEndian(data: []u8) bool {
     );
 
     // Vertices.
-    for (verts) |*v| v.* = common.swapEndianFloat(v.*);
+    swapWords(verts);
 
-    // Polygons. `first_link` is set when the tile is added.
-    for (polys) |*p| {
-        for (0..nav_mesh.verts_per_polygon) |j| {
-            p.verts[j] = @byteSwap(p.verts[j]);
-            p.neighbours[j] = @byteSwap(p.neighbours[j]);
-        }
-        p.flags = @byteSwap(p.flags);
-    }
+    // Polygons: the vertices, neighbours and flags. `first_link` is set when
+    // the tile is added.
+    swapRecords(Poly, polys, comptime halfwordOrder(Poly, @offsetOf(Poly, "verts"), 13, 0));
 
-    // Detail meshes.
-    for (detail_meshes) |*detail| {
-        detail.vert_base = @byteSwap(detail.vert_base);
-        detail.tri_base = @byteSwap(detail.tri_base);
-    }
+    // Detail meshes: the bases of their vertices and triangles.
+    swapRecords(PolyDetail, detail_meshes, comptime halfwordOrder(PolyDetail, 0, 0, 2));
 
     // Detail vertices.
-    for (detail_verts) |*v| v.* = common.swapEndianFloat(v.*);
+    swapWords(detail_verts);
 
-    // The bounding-volume tree.
-    for (bv_tree) |*node| {
-        for (0..3) |j| {
-            node.bounds_min[j] = @byteSwap(node.bounds_min[j]);
-            node.bounds_max[j] = @byteSwap(node.bounds_max[j]);
-        }
-        node.index = @byteSwap(node.index);
-    }
+    // The bounding-volume tree: six halfwords of bounds and a word of index.
+    swapRecords(BvNode, bv_tree, comptime halfwordOrder(BvNode, 0, 6, 1));
 
     // Off-mesh connections.
     for (off_mesh_cons) |*con| {
