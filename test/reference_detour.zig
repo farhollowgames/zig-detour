@@ -620,6 +620,7 @@ pub extern fn ref_offsetof_raycast_hit_path_cost() usize;
 
 /// `dtNode` has bit-fields: its size, and the offsets of its plain members.
 pub extern fn ref_sizeof_node() usize;
+pub extern fn ref_sizeof_node_index() usize;
 pub extern fn ref_offsetof_node_pos() usize;
 pub extern fn ref_offsetof_node_cost() usize;
 pub extern fn ref_offsetof_node_total() usize;

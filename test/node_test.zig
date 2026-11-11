@@ -223,6 +223,10 @@ test "node constants: the flag bits, the null index and the bit widths are the o
 
     try testing.expectEqual(reference.ref_const_null_idx(), @as(u32, detour.node.null_index));
     try testing.expectEqual(
+        reference.ref_sizeof_node_index(),
+        @as(usize, @sizeOf(detour.node.NodeIndex)),
+    );
+    try testing.expectEqual(
         reference.ref_const_node_parent_bits(),
         @as(i32, detour.node.node_parent_bits),
     );

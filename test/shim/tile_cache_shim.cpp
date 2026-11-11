@@ -140,6 +140,30 @@ struct RefLinearAllocator : dtTileCacheAlloc
 	}
 };
 
+// The base class's dtAlloc and dtFree, with a count of the calls to reset,
+// so a test can compare them with the port's.
+struct RefCountingAllocator : dtTileCacheAlloc
+{
+	int resets;
+
+	RefCountingAllocator() : resets(0) {}
+
+	void reset() override
+	{
+		++resets;
+	}
+
+	void* alloc(const size_t size) override
+	{
+		return dtAlloc(size, DT_ALLOC_TEMP);
+	}
+
+	void free(void* ptr) override
+	{
+		dtFree(ptr);
+	}
+};
+
 // Forwards the three compressor methods to C callbacks.
 struct RefCompressor : dtTileCacheCompressor
 {
@@ -441,7 +465,23 @@ dtTileCacheAlloc* ref_tc_alloc_create_linear(size_t capacity)
 	return new (mem) RefLinearAllocator(capacity);
 }
 
-// Destroys an allocator made by either create function. Anything still
+// The base class's allocation, counting resets as RefCountingAllocator says.
+dtTileCacheAlloc* ref_tc_alloc_create_counting(void)
+{
+	void* mem = dtAlloc(sizeof(RefCountingAllocator), DT_ALLOC_PERM);
+	if (!mem)
+		return 0;
+	return new (mem) RefCountingAllocator;
+}
+
+// The calls to reset so far, only for allocators made by
+// ref_tc_alloc_create_counting; on any other allocator it reads garbage.
+int ref_tc_alloc_reset_count(const dtTileCacheAlloc* alloc)
+{
+	return static_cast<const RefCountingAllocator*>(alloc)->resets;
+}
+
+// Destroys an allocator made by any of the create functions. Anything still
 // allocated from it becomes invalid.
 void ref_tc_alloc_destroy(dtTileCacheAlloc* alloc)
 {

@@ -22,7 +22,7 @@ pub const ObstacleRef = u32;
 pub const CompressedTileRef = u32;
 
 pub const TileCache = opaque {};
-/// A `dtTileCacheAlloc`, from `ref_tc_alloc_create_default` or `ref_tc_alloc_create_linear`.
+/// A `dtTileCacheAlloc`, from one of the `ref_tc_alloc_create_` functions.
 pub const TileCacheAlloc = opaque {};
 /// A `dtTileCacheCompressor` that forwards to the callbacks given to
 /// `ref_tc_compressor_create`.
@@ -264,6 +264,10 @@ pub extern fn ref_tc_alloc_create_default() ?*TileCacheAlloc;
 pub extern fn ref_tc_alloc_create_linear(capacity: usize) ?*TileCacheAlloc;
 /// Destroys an allocator made by either create function. Anything still
 /// allocated from it becomes invalid.
+/// The default allocator's dtAlloc and dtFree, counting the calls to reset.
+pub extern fn ref_tc_alloc_create_counting() ?*TileCacheAlloc;
+/// Only for allocators made by `ref_tc_alloc_create_counting`.
+pub extern fn ref_tc_alloc_reset_count(alloc: *const TileCacheAlloc) i32;
 pub extern fn ref_tc_alloc_destroy(alloc: ?*TileCacheAlloc) void;
 pub extern fn ref_tc_alloc_reset(alloc: *TileCacheAlloc) void;
 /// Upstream's `alloc`. Null when a linear allocator is out of room.

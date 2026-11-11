@@ -1362,3 +1362,467 @@ test "updateAgentParameters: every set of update flags steers the same" {
     }
     try stepAndCompare(&pair, 3);
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+test "constants: the limits, agent states, request stages and update flags are the original's" {
+    const crowd = detour.crowd;
+    try expectField(
+        "neighbours",
+        reference_crowd.ref_const_crowdagent_max_neighbours(),
+        @as(i32, crowd.agent_neighbour_count_max),
+    );
+    try expectField(
+        "corners",
+        reference_crowd.ref_const_crowdagent_max_corners(),
+        @as(i32, crowd.agent_corner_count_max),
+    );
+    try expectField(
+        "avoidance configurations",
+        reference_crowd.ref_const_crowd_max_obstavoidance_params(),
+        @as(i32, crowd.obstacle_avoidance_params_count_max),
+    );
+    try expectField(
+        "query filters",
+        reference_crowd.ref_const_crowd_max_query_filter_type(),
+        @as(i32, crowd.query_filter_type_count_max),
+    );
+
+    // An agent keeps room for as many neighbours and corners as the
+    // original's, and the mirrors of the original's agent are sized alike.
+    const Neighbours = [crowd.agent_neighbour_count_max]crowd.CrowdNeighbour;
+    try testing.expect(@FieldType(CrowdAgent, "neighbours") == Neighbours);
+    try testing.expect(
+        @FieldType(CrowdAgent, "corner_polys") == [crowd.agent_corner_count_max]PolyRef,
+    );
+    try expectField(
+        "mirrored neighbours",
+        reference_crowd.ref_const_crowdagent_max_neighbours(),
+        @as(i32, reference_crowd.max_neighbours),
+    );
+    try expectField(
+        "mirrored corners",
+        reference_crowd.ref_const_crowdagent_max_corners(),
+        @as(i32, reference_crowd.max_corners),
+    );
+
+    const Traversal = crowd.CrowdAgentTraversal;
+    try expectField(
+        "invalid",
+        reference_crowd.ref_const_crowdagent_state_invalid(),
+        @as(i32, @backingInt(Traversal.invalid)),
+    );
+    try expectField(
+        "walking",
+        reference_crowd.ref_const_crowdagent_state_walking(),
+        @as(i32, @backingInt(Traversal.walking)),
+    );
+    try expectField(
+        "off_mesh",
+        reference_crowd.ref_const_crowdagent_state_offmesh(),
+        @as(i32, @backingInt(Traversal.off_mesh)),
+    );
+
+    const Stage = crowd.MoveRequestStage;
+    const stages = [_]struct { name: []const u8, expected: i32, actual: Stage }{
+        .{
+            .name = "none",
+            .expected = reference_crowd.ref_const_crowdagent_target_none(),
+            .actual = .none,
+        },
+        .{
+            .name = "failed",
+            .expected = reference_crowd.ref_const_crowdagent_target_failed(),
+            .actual = .failed,
+        },
+        .{
+            .name = "valid",
+            .expected = reference_crowd.ref_const_crowdagent_target_valid(),
+            .actual = .valid,
+        },
+        .{
+            .name = "requesting",
+            .expected = reference_crowd.ref_const_crowdagent_target_requesting(),
+            .actual = .requesting,
+        },
+        .{
+            .name = "waiting_for_queue",
+            .expected = reference_crowd.ref_const_crowdagent_target_waiting_for_queue(),
+            .actual = .waiting_for_queue,
+        },
+        .{
+            .name = "waiting_for_path",
+            .expected = reference_crowd.ref_const_crowdagent_target_waiting_for_path(),
+            .actual = .waiting_for_path,
+        },
+        .{
+            .name = "velocity",
+            .expected = reference_crowd.ref_const_crowdagent_target_velocity(),
+            .actual = .velocity,
+        },
+    };
+    for (stages) |stage| {
+        errdefer std.debug.print("  move request stage {s}\n", .{stage.name});
+        try testing.expectEqual(stage.expected, @as(i32, @backingInt(stage.actual)));
+    }
+
+    const Flags = crowd.UpdateFlags;
+    const flags = [_]struct { name: []const u8, expected: i32, actual: Flags }{
+        .{
+            .name = "anticipate_turns",
+            .expected = reference_crowd.ref_const_crowd_anticipate_turns(),
+            .actual = .{ .anticipate_turns = true },
+        },
+        .{
+            .name = "obstacle_avoidance",
+            .expected = reference_crowd.ref_const_crowd_obstacle_avoidance(),
+            .actual = .{ .obstacle_avoidance = true },
+        },
+        .{
+            .name = "separation",
+            .expected = reference_crowd.ref_const_crowd_separation(),
+            .actual = .{ .separation = true },
+        },
+        .{
+            .name = "optimize_visibility",
+            .expected = reference_crowd.ref_const_crowd_optimize_vis(),
+            .actual = .{ .optimize_visibility = true },
+        },
+        .{
+            .name = "optimize_topology",
+            .expected = reference_crowd.ref_const_crowd_optimize_topo(),
+            .actual = .{ .optimize_topology = true },
+        },
+    };
+    for (flags) |flag| {
+        errdefer std.debug.print("  update flag {s}\n", .{flag.name});
+        const bits: u8 = @bitCast(flag.actual);
+        try testing.expectEqual(flag.expected, @as(i32, bits));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// requestMoveVelocity, resetMoveTarget
+// ---------------------------------------------------------------------------
+
+/// A velocity drawn at random, now and then one with nothing to it or one
+/// far beyond any agent's top speed.
+fn randomVelocity(random: std.Random) [3]f32 {
+    return switch (random.uintLessThan(u8, 8)) {
+        0 => @splat(0.0),
+        1 => .{ 1.0e4, 0.0, -1.0e4 },
+        else => .{
+            (random.float(f32) * 2.0 - 1.0) * 6.0,
+            (random.float(f32) * 2.0 - 1.0) * 1.0,
+            (random.float(f32) * 2.0 - 1.0) * 6.0,
+        },
+    };
+}
+
+test "requestMoveVelocity and resetMoveTarget: agents steer by velocity, stop and set off again" {
+    const gpa = testing.allocator;
+    var world: support.World = undefined;
+    try world.init(gpa, support.nav_test_obj, support.tiled_config, connected_options);
+    defer world.deinit();
+
+    var prng: std.Random.DefaultPrng = .init(66);
+    const random = prng.random();
+    var pair: CrowdPair = undefined;
+    try pair.init(gpa, &world, 10, 0.6);
+    defer pair.deinit();
+    for (&avoidance_presets, 0..) |*preset, i| pair.setObstacleAvoidanceParams(@intCast(i), preset);
+    try populate(&pair, random, 8);
+    try stepAndCompare(&pair, 5);
+
+    // Indexes outside the crowd are refused, and so is a target with no
+    // polygon. Slots 8 and 9 hold no agent and still take requests.
+    const target = pair.randomTarget(random);
+    for ([_]i32{ -1, 10, 11, 70000, std.math.minInt(i32), std.math.maxInt(i32) }) |idx| {
+        errdefer std.debug.print("  index {d}\n", .{idx});
+        try testing.expect(!try pair.requestMoveVelocity(idx, .{ 1.0, 0.0, 1.0 }));
+        try testing.expect(!try pair.resetMoveTarget(idx));
+        try testing.expect(!try pair.requestMoveTarget(idx, target.ref, target.pos));
+    }
+    try testing.expect(!try pair.requestMoveTarget(0, 0, target.pos));
+    try testing.expect(try pair.requestMoveVelocity(8, .{ 1.0, 0.0, 1.0 }));
+    try testing.expect(try pair.resetMoveTarget(9));
+    try pair.expectSameState();
+
+    // Rounds of every request on every slot, a few updates apart, so each
+    // request also lands on an agent in the middle of another: a path in
+    // the queue, a velocity, a stop.
+    var round: usize = 0;
+    while (round < 16) : (round += 1) {
+        errdefer std.debug.print("  round {d}\n", .{round});
+        var idx: i32 = 0;
+        while (idx < 10) : (idx += 1) {
+            switch ((@as(usize, @intCast(idx)) + round) % 5) {
+                0 => _ = try pair.requestMoveVelocity(idx, randomVelocity(random)),
+                1 => _ = try pair.resetMoveTarget(idx),
+                2, 3 => {
+                    const next = pair.randomTarget(random);
+                    if (next.ref != 0) _ = try pair.requestMoveTarget(idx, next.ref, next.pos);
+                },
+                else => {},
+            }
+        }
+        try pair.expectSameState();
+        try stepAndCompare(&pair, 1 + round % 4);
+    }
+
+    // A velocity request and a stop each take the place of a path request
+    // the queue is still answering.
+    var idx: i32 = 0;
+    while (idx < 8) : (idx += 1) {
+        const next = pair.randomTarget(random);
+        if (next.ref != 0) _ = try pair.requestMoveTarget(idx, next.ref, next.pos);
+    }
+    try stepAndCompare(&pair, 1);
+    try expectReached(anyPathRequest(&pair), "an agent with a queued path request");
+    idx = 0;
+    while (idx < 8) : (idx += 2) {
+        _ = try pair.requestMoveVelocity(idx, randomVelocity(random));
+        _ = try pair.resetMoveTarget(idx + 1);
+    }
+    try pair.expectSameState();
+    try stepAndCompare(&pair, 20);
+}
+
+// ---------------------------------------------------------------------------
+// update
+// ---------------------------------------------------------------------------
+
+test "update: agents cross off-mesh connections, and land on tiles taken away and put back" {
+    const gpa = testing.allocator;
+    var world: support.World = undefined;
+    try world.init(gpa, support.nav_test_obj, support.tiled_config, connected_options);
+    defer world.deinit();
+
+    var connections: [24]Connection = undefined;
+    const count = collectConnections(&world, &connections);
+    try expectReached(count >= 8, "a level with off-mesh connections");
+    const zero_steps = !hasDegenerateConnection(&world);
+
+    var pair: CrowdPair = undefined;
+    try pair.init(gpa, &world, @intCast(count), 0.6);
+    defer pair.deinit();
+    for (&avoidance_presets, 0..) |*preset, i| pair.setObstacleAvoidanceParams(@intCast(i), preset);
+
+    // An agent beside the start of each connection, sent to its far end.
+    for (connections[0..count], 0..) |connection, i| {
+        var params = defaultParams();
+        params.obstacle_avoidance_type = @intCast(i % 4);
+        params.speed_max = 2.0 + @as(f32, @floatFromInt(i % 3));
+        const start = connection[0];
+        const idx = try pair.addAgent(.{ start[0] + 0.4, start[1], start[2] - 0.3 }, &params);
+        const end = pair.findTarget(connection[1]);
+        if (idx >= 0 and end.ref != 0) _ = try pair.requestMoveTarget(idx, end.ref, end.pos);
+    }
+    try pair.expectSameState();
+
+    var crossings: usize = 0;
+    var landings: usize = 0;
+    var removed: ?struct { x: i32, y: i32, ref: TileRef, step: usize } = null;
+    var put_back = false;
+    for (0..400) |step| {
+        errdefer std.debug.print("  update {d}\n", .{step});
+        const dt: f32 = if (zero_steps and step % 17 == 5) 0.0 else 1.0 / 30.0;
+        const crossing_before = anyAnimation(&pair);
+        pair.update(dt);
+        try pair.expectSameState();
+        if (anyAnimation(&pair)) crossings += 1;
+        if (crossing_before and !anyAnimation(&pair)) landings += 1;
+
+        // Take away the tile an agent is about to land on, then put it
+        // back a while later.
+        if (removed == null) {
+            var idx: i32 = 0;
+            while (idx < pair.port.getAgentCount()) : (idx += 1) {
+                const animation: *const detour.crowd.CrowdAgentAnimation =
+                    pair.port.getAgentAnimation(idx);
+                if (!animation.active) continue;
+                const tile = tileUnder(&world, animation.end_pos);
+                const ref = try removeTileAt(&world, tile[0], tile[1]);
+                if (ref == 0) continue;
+                removed = .{ .x = tile[0], .y = tile[1], .ref = ref, .step = step };
+                break;
+            }
+        } else if (!put_back and step >= removed.?.step + 45) {
+            try testing.expect(try world.addTileReusing(removed.?.x, removed.?.y, removed.?.ref));
+            put_back = true;
+            var idx: i32 = 0;
+            while (idx < pair.port.getAgentCount()) : (idx += 1) {
+                const next = pair.findTarget(connections[@intCast(idx)][0]);
+                if (next.ref != 0) _ = try pair.requestMoveTarget(idx, next.ref, next.pos);
+            }
+        }
+    }
+    try expectReached(crossings > 0, "an agent crossing an off-mesh connection");
+    try expectReached(landings > 0, "an agent landing after a crossing");
+    try expectReached(put_back, "a tile taken away under a crossing and put back");
+}
+
+test "update: the traced agent's shortcut and avoidance samples are the same" {
+    const gpa = testing.allocator;
+    var world: support.World = undefined;
+    try world.init(gpa, support.nav_test_obj, support.tiled_config, varied_options);
+    defer world.deinit();
+    const zero_steps = !hasDegenerateConnection(&world);
+
+    var prng: std.Random.DefaultPrng = .init(67);
+    const random = prng.random();
+    var pair: CrowdPair = undefined;
+    try pair.init(gpa, &world, 12, 0.6);
+    defer pair.deinit();
+    for (&avoidance_presets, 0..) |*preset, i| pair.setObstacleAvoidanceParams(@intCast(i), preset);
+    try populate(&pair, random, 12);
+
+    // One buffer with room for every sample, one that fills up. Most
+    // samples stop early and are never written, so a trace holds a handful.
+    var roomy: DebugPair = undefined;
+    try roomy.init(gpa, 512);
+    defer roomy.deinit(gpa);
+    const cramped_count = 3;
+    var cramped: DebugPair = undefined;
+    try cramped.init(gpa, cramped_count);
+    defer cramped.deinit(gpa);
+
+    var sampled = false;
+    var filled = false;
+    var idx: i32 = 0;
+    for (0..150) |step| {
+        errdefer std.debug.print("  update {d}\n", .{step});
+        // Every place among the active agents, no agent's place and places
+        // past the last.
+        const trace_idx: i32 = @as(i32, @intCast(step % 15)) - 1;
+        const debug: ?*DebugPair = switch (step % 3) {
+            0 => &roomy,
+            1 => &cramped,
+            else => null,
+        };
+        const dt: f32 = if (zero_steps and step % 11 == 4) 0.0 else 1.0 / 30.0;
+        try pair.updateTraced(dt, trace_idx, debug);
+        try pair.expectSameState();
+        if (roomy.port.getSampleCount() > 0) sampled = true;
+        if (cramped.port.getSampleCount() == cramped_count) filled = true;
+
+        // Keep the agents moving, and now and then switch one's steering
+        // around so the traced agent is sometimes one that avoids nothing.
+        if (step % 20 == 19) {
+            idx = 0;
+            while (idx < 12) : (idx += 1) {
+                const next = pair.randomTarget(random);
+                if (next.ref != 0) _ = try pair.requestMoveTarget(idx, next.ref, next.pos);
+            }
+        }
+        if (step % 25 == 7) {
+            var params = randomParams(random);
+            params.obstacle_avoidance_type %= 4;
+            pair.updateAgentParameters(@intCast(step % 12), &params);
+        }
+    }
+    try expectReached(sampled, "a trace with avoidance samples");
+    try expectReached(filled, "a trace that fills the small buffer");
+    roomy.reset();
+    cramped.reset();
+    try roomy.expectSame();
+    try cramped.expectSame();
+}
+
+/// One seeded run over `world`: `step_count` calls drawn at random, each of
+/// the crowd's calls among them, both crowds compared after every one.
+fn fuzzRun(
+    gpa: std.mem.Allocator,
+    world: *support.World,
+    seed: u64,
+    agent_count_max: i32,
+    step_count: usize,
+) !void {
+    errdefer std.debug.print("  fuzz seed {d}\n", .{seed});
+    var prng: std.Random.DefaultPrng = .init(seed);
+    const random = prng.random();
+    var pair: CrowdPair = undefined;
+    try pair.init(gpa, world, agent_count_max, 0.8);
+    defer pair.deinit();
+    var debug: DebugPair = undefined;
+    try debug.init(gpa, 128);
+    defer debug.deinit(gpa);
+    for (&avoidance_presets, 0..) |*preset, i| pair.setObstacleAvoidanceParams(@intCast(i), preset);
+    const zero_steps = !hasDegenerateConnection(world);
+
+    for (0..step_count) |step| {
+        errdefer std.debug.print("  fuzz step {d}\n", .{step});
+        const idx = random.intRangeLessThan(i32, -1, agent_count_max + 1);
+        switch (random.uintLessThan(u8, 20)) {
+            0...2 => {
+                var params = randomParams(random);
+                params.user_data = if (random.boolean()) &user_tag else null;
+                const pos = if (random.uintLessThan(u8, 10) == 0)
+                    world.level.groundPoint(random, 3.0)
+                else
+                    world.level.groundPoint(random, 0.3);
+                const added = try pair.addAgent(pos, &params);
+                if (added >= 0 and random.boolean()) {
+                    const target = pair.randomTarget(random);
+                    if (target.ref != 0) {
+                        _ = try pair.requestMoveTarget(added, target.ref, target.pos);
+                    }
+                }
+            },
+            3 => pair.removeAgent(idx),
+            4 => {
+                const params = randomParams(random);
+                pair.updateAgentParameters(idx, &params);
+            },
+            5, 6 => {
+                const target = pair.randomTarget(random);
+                _ = try pair.requestMoveTarget(idx, target.ref, target.pos);
+            },
+            7 => _ = try pair.requestMoveVelocity(idx, randomVelocity(random)),
+            8 => _ = try pair.resetMoveTarget(idx),
+            9 => try pair.setFilterAreaCost(
+                random.intRangeLessThan(i32, 0, 16),
+                random.intRangeLessThan(i32, 0, 64),
+                1.0 + random.float(f32) * 4.0,
+            ),
+            10 => try pair.setFilterFlags(
+                random.intRangeLessThan(i32, 0, 16),
+                random.int(u16) | 1,
+                random.int(u16) & 0xfff0,
+            ),
+            11 => pair.setObstacleAvoidanceParams(
+                random.intRangeLessThan(i32, 0, 8),
+                &avoidance_presets[random.uintLessThan(usize, avoidance_presets.len)],
+            ),
+            12 => try pair.updateTraced(
+                1.0 / 30.0,
+                random.intRangeLessThan(i32, -1, agent_count_max + 1),
+                if (random.boolean()) &debug else null,
+            ),
+            else => {
+                var dt = fuzz_steps[random.uintLessThan(usize, fuzz_steps.len)];
+                if (dt == 0.0 and !zero_steps) dt = 1.0 / 60.0;
+                pair.update(dt);
+            },
+        }
+        try pair.expectSameState();
+    }
+}
+
+test "update: seeded runs of every call on many agents stay the same" {
+    const gpa = testing.allocator;
+    const worlds = [_]support.LevelOptions{ connected_options, varied_options };
+    for (worlds, 0..) |options, w| {
+        errdefer std.debug.print("  world {d}\n", .{w});
+        var world: support.World = undefined;
+        try world.init(gpa, support.nav_test_obj, support.tiled_config, options);
+        defer world.deinit();
+        try fuzzRun(gpa, &world, 0xc0d0 + w, 40, 1200);
+    }
+    var small: support.World = undefined;
+    try small.init(gpa, support.nav_test_obj, small_tile_config, connected_options);
+    defer small.deinit();
+    try fuzzRun(gpa, &small, 0xc0d7, 24, 800);
+}

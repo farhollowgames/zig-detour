@@ -538,6 +538,7 @@ REF_OFFSETOF(raycast_hit_max_path, dtRaycastHit, maxPath)
 REF_OFFSETOF(raycast_hit_path_cost, dtRaycastHit, pathCost)
 
 REF_SIZEOF(node, dtNode)
+REF_SIZEOF(node_index, dtNodeIndex)
 REF_OFFSETOF(node_pos, dtNode, pos)
 REF_OFFSETOF(node_cost, dtNode, cost)
 REF_OFFSETOF(node_total, dtNode, total)

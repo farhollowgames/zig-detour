@@ -130,13 +130,15 @@ pub const PathQueue = struct {
         }
 
         self.path_size_max = path_size_max;
-        // A negative size asks for more memory than there is.
-        const path_size = std.math.cast(usize, path_size_max) orelse {
-            self.purge(gpa);
-            return false;
-        };
         for (&self.queue) |*q| {
+            // An entry is free before its buffer is allocated, so the
+            // requests of the entries after a failed one stay.
             q.ref = path_queue_invalid;
+            // A negative size asks for more memory than there is.
+            const path_size = std.math.cast(usize, path_size_max) orelse {
+                self.purge(gpa);
+                return false;
+            };
             q.path = gpa.alloc(PolyRef, path_size) catch {
                 self.purge(gpa);
                 return false;

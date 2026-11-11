@@ -22,19 +22,19 @@ original, and why.
 | Detour | DetourNavMesh.h | `src/nav_mesh.zig` | 69 |  |  | 69 |  |  |
 | Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  |  | 4 |  |  |
 | Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  |  | 45 |  |  |
-| Detour | DetourNode.h | `src/node.zig` | 33 |  | 1 | 32 |  |  |
+| Detour | DetourNode.h | `src/node.zig` | 33 |  |  | 33 |  |  |
 | Detour | DetourCommon.h | `src/common.zig` | 44 |  |  | 44 |  |  |
 | Detour | DetourStatus.h | `src/status.zig` | 17 |  |  | 17 |  |  |
 | Detour | DetourMath.h | `src/common.zig` | 1 |  |  | 1 |  |  |
-| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  | 9 | 28 |  |  |
+| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  |  | 37 |  |  |
 | DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  |  | 24 |  |  |
-| DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  | 11 |  |  |  |
+| DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  |  | 11 |  |  |
 | DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  |  | 8 |  |  |
 | DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  |  | 33 |  |  |
 | DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 10 |  |  |
 | DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 49 |  |  |
-| DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  | 5 | 25 |  |  |
-| | | **all** | 415 |  | 26 | 389 |  |  |
+| DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  |  | 30 |  |  |
+| | | **all** | 415 |  |  | 415 |  |  |
 
 The differential tests run twice: with every build switch off, and with every one on.
 
@@ -43,7 +43,7 @@ The differential tests run twice: with every build switch off, and with every on
 | upstream | Zig | state |
 | --- | --- | --- |
 | `DT_POLYREF64` (`RECASTNAVIGATION_DT_POLYREF64`): 64-bit polygon and tile references | `-Dpolyref64` | oracle-tested |
-| `DT_VIRTUAL_QUERYFILTER` (`RECASTNAVIGATION_DT_VIRTUAL_QUERYFILTER`): a filter replaces its pass and cost functions | `-Dvirtual-query-filter` | ported |
+| `DT_VIRTUAL_QUERYFILTER` (`RECASTNAVIGATION_DT_VIRTUAL_QUERYFILTER`): a filter replaces its pass and cost functions | `-Dvirtual-query-filter` | oracle-tested |
 | `RC_FAST_MATH` (`RECASTNAVIGATION_ENABLE_FAST_MATH`): no checks for infinite and NaN inputs | `-Dfast-math` | oracle-tested |
 
 ## Left out
@@ -206,7 +206,7 @@ yes.
 | upstream | Zig | state |
 | --- | --- | --- |
 | `dtNodeFlags`: `DT_NODE_OPEN`, `DT_NODE_CLOSED`, `DT_NODE_PARENT_DETACHED` | `NodeFlags` | oracle-tested |
-| `dtNodeIndex` | `NodeIndex` | ported |
+| `dtNodeIndex` | `NodeIndex` | oracle-tested |
 | `DT_NULL_IDX` | `null_index` | oracle-tested |
 | `DT_NODE_PARENT_BITS` | `node_parent_bits` | oracle-tested |
 | `DT_NODE_STATE_BITS` | `node_state_bits` | oracle-tested |
@@ -322,17 +322,17 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `DT_CROWDAGENT_MAX_NEIGHBOURS` | `agent_neighbour_count_max` | ported |
-| `DT_CROWDAGENT_MAX_CORNERS` | `agent_corner_count_max` | ported |
-| `DT_CROWD_MAX_OBSTAVOIDANCE_PARAMS` | `obstacle_avoidance_params_count_max` | ported |
-| `DT_CROWD_MAX_QUERY_FILTER_TYPE` | `query_filter_type_count_max` | ported |
-| `dtCrowdNeighbour`: `idx`, `dist` | `CrowdNeighbour` | ported |
-| `CrowdAgentState`: `DT_CROWDAGENT_STATE_INVALID`, `DT_CROWDAGENT_STATE_WALKING`, `DT_CROWDAGENT_STATE_OFFMESH` | `CrowdAgentTraversal` | ported |
+| `DT_CROWDAGENT_MAX_NEIGHBOURS` | `agent_neighbour_count_max` | oracle-tested |
+| `DT_CROWDAGENT_MAX_CORNERS` | `agent_corner_count_max` | oracle-tested |
+| `DT_CROWD_MAX_OBSTAVOIDANCE_PARAMS` | `obstacle_avoidance_params_count_max` | oracle-tested |
+| `DT_CROWD_MAX_QUERY_FILTER_TYPE` | `query_filter_type_count_max` | oracle-tested |
+| `dtCrowdNeighbour`: `idx`, `dist` | `CrowdNeighbour` | oracle-tested |
+| `CrowdAgentState`: `DT_CROWDAGENT_STATE_INVALID`, `DT_CROWDAGENT_STATE_WALKING`, `DT_CROWDAGENT_STATE_OFFMESH` | `CrowdAgentTraversal` | oracle-tested |
 | `dtCrowdAgentParams`: `radius`, `height`, `maxAcceleration`, `maxSpeed`, `collisionQueryRange`, `pathOptimizationRange`, `separationWeight`, `updateFlags`, `obstacleAvoidanceType`, `queryFilterType`, `userData` | `CrowdAgentParams` | oracle-tested |
-| `MoveRequestState`: `DT_CROWDAGENT_TARGET_NONE`, `DT_CROWDAGENT_TARGET_FAILED`, `DT_CROWDAGENT_TARGET_VALID`, `DT_CROWDAGENT_TARGET_REQUESTING`, `DT_CROWDAGENT_TARGET_WAITING_FOR_QUEUE`, `DT_CROWDAGENT_TARGET_WAITING_FOR_PATH`, `DT_CROWDAGENT_TARGET_VELOCITY` | `MoveRequestStage` | ported |
+| `MoveRequestState`: `DT_CROWDAGENT_TARGET_NONE`, `DT_CROWDAGENT_TARGET_FAILED`, `DT_CROWDAGENT_TARGET_VALID`, `DT_CROWDAGENT_TARGET_REQUESTING`, `DT_CROWDAGENT_TARGET_WAITING_FOR_QUEUE`, `DT_CROWDAGENT_TARGET_WAITING_FOR_PATH`, `DT_CROWDAGENT_TARGET_VELOCITY` | `MoveRequestStage` | oracle-tested |
 | `dtCrowdAgent`: `active`, `state`, `partial`, `corridor`, `boundary`, `topologyOptTime`, `neis`, `nneis`, `desiredSpeed`, `npos`, `disp`, `dvel`, `nvel`, `vel`, `params`, `cornerVerts`, `cornerFlags`, `cornerPolys`, `ncorners`, `targetState`, `targetRef`, `targetPos`, `targetPathqRef`, `targetReplan`, `targetReplanTime` | `CrowdAgent` | oracle-tested |
-| `dtCrowdAgentAnimation`: `active`, `initPos`, `startPos`, `endPos`, `polyRef`, `t`, `tmax` | `CrowdAgentAnimation` | ported |
-| `UpdateFlags`: `DT_CROWD_ANTICIPATE_TURNS`, `DT_CROWD_OBSTACLE_AVOIDANCE`, `DT_CROWD_SEPARATION`, `DT_CROWD_OPTIMIZE_VIS`, `DT_CROWD_OPTIMIZE_TOPO` | `UpdateFlags` | ported |
+| `dtCrowdAgentAnimation`: `active`, `initPos`, `startPos`, `endPos`, `polyRef`, `t`, `tmax` | `CrowdAgentAnimation` | oracle-tested |
+| `UpdateFlags`: `DT_CROWD_ANTICIPATE_TURNS`, `DT_CROWD_OBSTACLE_AVOIDANCE`, `DT_CROWD_SEPARATION`, `DT_CROWD_OPTIMIZE_VIS`, `DT_CROWD_OPTIMIZE_TOPO` | `UpdateFlags` | oracle-tested |
 | `dtCrowdAgentDebugInfo`: `idx`, `optStart`, `optEnd`, `vod` | `CrowdAgentDebugInfo` | oracle-tested |
 | `dtCrowd` | `Crowd` | oracle-tested |
 | `dtCrowd::dtCrowd` | `Crowd.empty` | oracle-tested |
@@ -393,17 +393,17 @@ yes.
 
 | upstream | Zig | state |
 | --- | --- | --- |
-| `DT_PATHQ_INVALID` | `path_queue_invalid` | ported |
-| `dtPathQueueRef` | `PathQueueRef` | ported |
-| `dtPathQueue` | `PathQueue` | ported |
-| `dtPathQueue::dtPathQueue` | `PathQueue.empty` | ported |
-| `dtPathQueue::~dtPathQueue` | `PathQueue.deinit` | ported |
-| `dtPathQueue::init` | `PathQueue.init` | ported |
-| `dtPathQueue::update` | `PathQueue.update` | ported |
-| `dtPathQueue::request` | `PathQueue.request` | ported |
-| `dtPathQueue::getRequestStatus` | `PathQueue.getRequestStatus` | ported |
-| `dtPathQueue::getPathResult` | `PathQueue.getPathResult` | ported |
-| `dtPathQueue::getNavQuery` | `PathQueue.getNavQuery` | ported |
+| `DT_PATHQ_INVALID` | `path_queue_invalid` | oracle-tested |
+| `dtPathQueueRef` | `PathQueueRef` | oracle-tested |
+| `dtPathQueue` | `PathQueue` | oracle-tested |
+| `dtPathQueue::dtPathQueue` | `PathQueue.empty` | oracle-tested |
+| `dtPathQueue::~dtPathQueue` | `PathQueue.deinit` | oracle-tested |
+| `dtPathQueue::init` | `PathQueue.init` | oracle-tested |
+| `dtPathQueue::update` | `PathQueue.update` | oracle-tested |
+| `dtPathQueue::request` | `PathQueue.request` | oracle-tested |
+| `dtPathQueue::getRequestStatus` | `PathQueue.getRequestStatus` | oracle-tested |
+| `dtPathQueue::getPathResult` | `PathQueue.getPathResult` | oracle-tested |
+| `dtPathQueue::getNavQuery` | `PathQueue.getNavQuery` | oracle-tested |
 
 ### DetourLocalBoundary.h → `src/local_boundary.zig`
 
@@ -541,7 +541,7 @@ yes.
 | `dtTileCacheContour`: `nverts`, `verts`, `reg`, `area` | `Contour` | oracle-tested |
 | `dtTileCacheContourSet`: `nconts`, `conts` | `ContourSet` | oracle-tested |
 | `dtTileCachePolyMesh`: `nvp`, `nverts`, `npolys`, `verts`, `polys`, `flags`, `areas` | `PolyMesh` | oracle-tested |
-| `dtTileCacheAlloc` | `BuildAllocator` | ported |
+| `dtTileCacheAlloc` | `BuildAllocator` | oracle-tested |
 | `dtTileCacheAlloc::reset` | `BuildAllocator.reset` | oracle-tested |
 | `dtTileCacheCompressor` | `Compressor` | oracle-tested |
 | `dtTileCacheCompressor::maxCompressedSize` | `Compressor.maxCompressedSize` | oracle-tested |
@@ -554,13 +554,13 @@ yes.
 | `dtFreeTileCacheContourSet` | `freeContourSet` | oracle-tested |
 | `dtAllocTileCachePolyMesh` | `allocPolyMesh` | oracle-tested |
 | `dtFreeTileCachePolyMesh` | `freePolyMesh` | oracle-tested |
-| `dtMarkCylinderArea` | `markCylinderArea` | ported |
-| `dtMarkBoxArea(layer, orig, cs, ch, bmin, bmax, areaId)` | `markBoxArea` | ported |
-| `dtMarkBoxArea(layer, orig, cs, ch, center, halfExtents, rotAux, areaId)` | `markOrientedBoxArea` | ported |
+| `dtMarkCylinderArea` | `markCylinderArea` | oracle-tested |
+| `dtMarkBoxArea(layer, orig, cs, ch, bmin, bmax, areaId)` | `markBoxArea` | oracle-tested |
+| `dtMarkBoxArea(layer, orig, cs, ch, center, halfExtents, rotAux, areaId)` | `markOrientedBoxArea` | oracle-tested |
 | `dtBuildTileCacheRegions` | `buildRegions` | oracle-tested |
 | `dtBuildTileCacheContours` | `buildContours` | oracle-tested |
 | `dtBuildTileCachePolyMesh` | `buildPolyMesh` | oracle-tested |
-| `dtTileCacheHeaderSwapEndian` | `swapEndianHeader` | ported |
+| `dtTileCacheHeaderSwapEndian` | `swapEndianHeader` | oracle-tested |
 
 ## The integer variant
 
@@ -583,9 +583,6 @@ design's tolerances.
 
 ## Next
 
-1. Differential tests of the path queue, the query filter's own functions (with the
-   virtual filter switch), the rest of the crowd (move requests, velocities, off-mesh
-   animations, long seeded runs) and the tile cache builder's area marks and header swap.
-2. The integer navigation mesh and queries built, their tolerance tests against the float
+1. The integer navigation mesh and queries built, their tolerance tests against the float
    port and their determinism tests.
-3. `zig build bench`, and its tables in the README.
+2. `zig build bench`, and its tables in the README.

@@ -981,6 +981,34 @@ bool ref_crowd_agent_snapshot(const dtCrowd* crowd, int idx, RefAgentSnapshot* o
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// DetourCrowd.h: constants and enum values
+// ---------------------------------------------------------------------------
+
+#define REF_CROWD_CONST(NAME, EXPR) int ref_const_##NAME() { return (int)(EXPR); }
+
+REF_CROWD_CONST(crowdagent_max_neighbours, DT_CROWDAGENT_MAX_NEIGHBOURS)
+REF_CROWD_CONST(crowdagent_max_corners, DT_CROWDAGENT_MAX_CORNERS)
+REF_CROWD_CONST(crowd_max_obstavoidance_params, DT_CROWD_MAX_OBSTAVOIDANCE_PARAMS)
+REF_CROWD_CONST(crowd_max_query_filter_type, DT_CROWD_MAX_QUERY_FILTER_TYPE)
+REF_CROWD_CONST(crowdagent_state_invalid, DT_CROWDAGENT_STATE_INVALID)
+REF_CROWD_CONST(crowdagent_state_walking, DT_CROWDAGENT_STATE_WALKING)
+REF_CROWD_CONST(crowdagent_state_offmesh, DT_CROWDAGENT_STATE_OFFMESH)
+REF_CROWD_CONST(crowdagent_target_none, DT_CROWDAGENT_TARGET_NONE)
+REF_CROWD_CONST(crowdagent_target_failed, DT_CROWDAGENT_TARGET_FAILED)
+REF_CROWD_CONST(crowdagent_target_valid, DT_CROWDAGENT_TARGET_VALID)
+REF_CROWD_CONST(crowdagent_target_requesting, DT_CROWDAGENT_TARGET_REQUESTING)
+REF_CROWD_CONST(crowdagent_target_waiting_for_queue, DT_CROWDAGENT_TARGET_WAITING_FOR_QUEUE)
+REF_CROWD_CONST(crowdagent_target_waiting_for_path, DT_CROWDAGENT_TARGET_WAITING_FOR_PATH)
+REF_CROWD_CONST(crowdagent_target_velocity, DT_CROWDAGENT_TARGET_VELOCITY)
+REF_CROWD_CONST(crowd_anticipate_turns, DT_CROWD_ANTICIPATE_TURNS)
+REF_CROWD_CONST(crowd_obstacle_avoidance, DT_CROWD_OBSTACLE_AVOIDANCE)
+REF_CROWD_CONST(crowd_separation, DT_CROWD_SEPARATION)
+REF_CROWD_CONST(crowd_optimize_vis, DT_CROWD_OPTIMIZE_VIS)
+REF_CROWD_CONST(crowd_optimize_topo, DT_CROWD_OPTIMIZE_TOPO)
+
+#undef REF_CROWD_CONST
+
 } // extern "C"
 
 #undef REF_SIZEOF

@@ -16,10 +16,13 @@ every returned value and every byte written. It has no dependencies beyond
 Zig's standard library, and every function that allocates takes the allocator
 it uses.
 
-**The port is in progress.** Every part is translated; the tests cover the
-navigation mesh, the tile builder, the geometry helpers, the proximity grid
-and the tile cache so far. [`STATUS.md`](STATUS.md) lists every function,
-option and mode of the original with its state, and what comes next.
+**The port is in progress.** Every part is translated, and the tests compare
+all of it with the original: the navigation mesh, the tile builder, the
+queries and the node pool, the crowd and its parts, the tile cache and its
+builder. An integer version of the navigation mesh and its queries, and
+benchmarks against the original, come next. [`STATUS.md`](STATUS.md) lists
+every function, option and mode of the original with its state, and what
+comes next.
 [`doc/parity.md`](doc/parity.md) lists every place where the port differs
 from the original on purpose.
 
@@ -136,7 +139,10 @@ tile grids, hand-made meshes for the edge cases (empty, one polygon, the
 largest sizes, degenerate geometry), and seeded random inputs, at least a
 thousand cases per test, with the seed printed when one fails. After every
 call the two must agree on every returned value and every byte written:
-tiles, links, saved tile state, references, points.
+tiles, links, saved tile state, references, points, every field of every
+crowd agent, the calls a query makes to a filter's own functions. Tiles
+damaged at random are refused by the port where the original would read or
+write outside them, and taken as the original takes them otherwise.
 
 The tests run twice: with every build switch off, and with every one on.
 

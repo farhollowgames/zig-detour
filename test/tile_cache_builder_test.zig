@@ -2310,3 +2310,274 @@ test "buildContours: outlines with more vertices than the walk has room for" {
     try testing.expect(too_long_count >= 2);
     try testing.expect(traced_count >= 2);
 }
+
+// ---------------------------------------------------------------------------
+// markCylinderArea, markBoxArea, markOrientedBoxArea
+// ---------------------------------------------------------------------------
+
+/// A point near a layer of `width` by `height` cells whose lowest corner
+/// is `origin`: over its cells, on its edges or a few cells past them, and
+/// from below its lowest height to above its highest.
+fn pointNear(
+    random: std.Random,
+    origin: [3]f32,
+    cell_size: f32,
+    cell_height: f32,
+    width: u8,
+    height: u8,
+) [3]f32 {
+    const span_x = (@as(f32, @floatFromInt(width)) + 8.0) * cell_size;
+    const span_z = (@as(f32, @floatFromInt(height)) + 8.0) * cell_size;
+    return .{
+        origin[0] - 4.0 * cell_size + random.float(f32) * span_x,
+        origin[1] + (random.float(f32) * 300.0 - 20.0) * cell_height,
+        origin[2] - 4.0 * cell_size + random.float(f32) * span_z,
+    };
+}
+
+/// The two floats of an oriented box's rotation, as the tile cache works
+/// them out from the angle about the up axis.
+fn rotationAux(angle: f32) [2]f32 {
+    const cos_half = @cos(angle * 0.5);
+    const sin_half = @sin(angle * 0.5);
+    return .{ cos_half * sin_half, cos_half * cos_half - 0.5 };
+}
+
+test "markCylinderArea, markBoxArea, markOrientedBoxArea: random shapes mark the same cells" {
+    const gpa = testing.allocator;
+    var codecs: CodecPair = undefined;
+    try codecs.init(.store);
+    defer codecs.deinit();
+    var scratch: Scratch = try .init(gpa, Scratch.default_capacity);
+    defer scratch.deinit();
+
+    const seed = 0x3a7c;
+    var prng: std.Random.DefaultPrng = .init(seed);
+    const random = prng.random();
+    const layers = try realLayers();
+    var marked_cells: usize = 0;
+    var untouched_layers: usize = 0;
+    var case: usize = 0;
+    while (case < 800) : (case += 1) {
+        errdefer std.debug.print("  seed {d}, case {d}\n", .{ seed, case });
+
+        // A real layer three times in four, else one of random heights.
+        var random_input: ?LayerInput = null;
+        defer if (random_input) |*input| input.deinit(gpa);
+        const real = case % 4 != 3;
+        const input: *const LayerInput = if (real)
+            &layers[random.uintLessThan(usize, layers.len)]
+        else blk: {
+            random_input = try randomLayerInput(gpa, random);
+            random_input.?.header.magic = builder.tile_cache_magic;
+            random_input.?.header.version = builder.tile_cache_version;
+            break :blk &random_input.?;
+        };
+        // A random layer the codec cannot pack is no case for the marks.
+        const blob = try packBoth(gpa, &codecs, input) orelse {
+            if (real) return error.TestUnexpectedResult;
+            continue;
+        };
+        defer gpa.free(blob);
+        scratch.reset();
+        const pair = try unpackBoth(&scratch, &codecs, blob) orelse
+            return error.TestUnexpectedResult;
+
+        // The cell sizes the layer was built with, or others.
+        const cell_size = if (real and random.boolean())
+            real_cell_size
+        else
+            0.05 + random.float(f32) * 0.6;
+        const cell_height = if (real and random.boolean())
+            real_cell_height
+        else
+            0.05 + random.float(f32) * 0.4;
+        const origin = if (real)
+            input.header.bounds_min
+        else
+            [3]f32{ random.float(f32) * 50.0, random.float(f32) * 5.0, random.float(f32) * 50.0 };
+        const width = input.header.width;
+        const height = input.header.height;
+
+        for (0..random.intRangeAtMost(usize, 1, 6)) |shape| {
+            errdefer std.debug.print("  shape {d}\n", .{shape});
+            const area_id = random.int(u8);
+            const at = pointNear(random, origin, cell_size, cell_height, width, height);
+            switch (random.uintLessThan(u8, 3)) {
+                0 => {
+                    // A radius of zero, of part of a cell, or of many cells.
+                    const radius = switch (random.uintLessThan(u8, 4)) {
+                        0 => 0.0,
+                        1 => random.float(f32) * cell_size,
+                        else => random.float(f32) * 6.0,
+                    };
+                    const tall = random.float(f32) * 20.0;
+                    const expected = reference.ref_tcb_mark_cylinder_area(
+                        pair.original,
+                        &origin,
+                        cell_size,
+                        cell_height,
+                        &at,
+                        radius,
+                        tall,
+                        area_id,
+                    );
+                    const actual = builder.markCylinderArea(
+                        pair.port,
+                        origin,
+                        cell_size,
+                        cell_height,
+                        at,
+                        radius,
+                        tall,
+                        area_id,
+                    );
+                    try testing.expectEqual(expected, statusBits(actual));
+                },
+                1 => {
+                    // Corners in any order: a box whose corners are swapped
+                    // marks nothing.
+                    const other = pointNear(random, origin, cell_size, cell_height, width, height);
+                    const expected = reference.ref_tcb_mark_box_area(
+                        pair.original,
+                        &origin,
+                        cell_size,
+                        cell_height,
+                        &at,
+                        &other,
+                        area_id,
+                    );
+                    const actual = builder.markBoxArea(
+                        pair.port,
+                        origin,
+                        cell_size,
+                        cell_height,
+                        at,
+                        other,
+                        area_id,
+                    );
+                    try testing.expectEqual(expected, statusBits(actual));
+                },
+                else => {
+                    const half_extents = [3]f32{
+                        random.float(f32) * 4.0,
+                        random.float(f32) * 10.0,
+                        random.float(f32) * 4.0,
+                    };
+                    // Mostly a real rotation, now and then any two floats.
+                    const rot_aux = if (random.uintLessThan(u8, 5) == 0)
+                        [2]f32{ random.float(f32) * 2.0 - 1.0, random.float(f32) * 2.0 - 1.0 }
+                    else
+                        rotationAux(random.float(f32) * std.math.tau);
+                    const expected = reference.ref_tcb_mark_oriented_box_area(
+                        pair.original,
+                        &origin,
+                        cell_size,
+                        cell_height,
+                        &at,
+                        &half_extents,
+                        &rot_aux,
+                        area_id,
+                    );
+                    const actual = builder.markOrientedBoxArea(
+                        pair.port,
+                        origin,
+                        cell_size,
+                        cell_height,
+                        at,
+                        half_extents,
+                        rot_aux,
+                        area_id,
+                    );
+                    try testing.expectEqual(expected, statusBits(actual));
+                },
+            }
+        }
+        try expectSameLayer(pair);
+        var changed: usize = 0;
+        for (input.areas, pair.port.areas) |before, after| {
+            if (before != after) changed += 1;
+        }
+        marked_cells += changed;
+        if (changed == 0) untouched_layers += 1;
+    }
+    // Shapes that mark cells and shapes that miss them were both common.
+    try testing.expect(marked_cells >= 5000);
+    try testing.expect(untouched_layers >= 50);
+}
+
+// ---------------------------------------------------------------------------
+// swapEndianHeader
+// ---------------------------------------------------------------------------
+
+test "swapEndianHeader: headers in either byte order swap and swap back, others are refused" {
+    const seed = 0x5a9e;
+    var prng: std.Random.DefaultPrng = .init(seed);
+    const random = prng.random();
+    const magic: i32 = builder.tile_cache_magic;
+    const version: i32 = builder.tile_cache_version;
+    var swapped_count: usize = 0;
+    for (0..3000) |case| {
+        errdefer std.debug.print("  seed {d}, case {d}\n", .{ seed, case });
+        var bytes: [header_size]u8 align(4) = undefined;
+        random.bytes(&bytes);
+        const words = std.mem.bytesAsSlice(i32, bytes[0..8]);
+        switch (case % 6) {
+            0 => {
+                words[0] = magic;
+                words[1] = version;
+            },
+            1 => {
+                words[0] = @byteSwap(magic);
+                words[1] = @byteSwap(version);
+            },
+            // One of the two in this order and the other in the other.
+            2 => {
+                words[0] = magic;
+                words[1] = @byteSwap(version);
+            },
+            3 => {
+                words[0] = @byteSwap(magic);
+                words[1] = version;
+            },
+            // The right magic and the version after it.
+            4 => {
+                words[0] = magic;
+                words[1] = version + 1;
+            },
+            else => {},
+        }
+
+        var original = bytes;
+        var port = bytes;
+        const expected = reference.ref_tcb_header_swap_endian(&original, header_size);
+        const actual = builder.swapEndianHeader(&port);
+        try testing.expectEqual(expected, actual);
+        try support.expectBytes(&original, &port);
+        try testing.expectEqual(case % 6 < 2, actual);
+        if (!actual) {
+            try support.expectBytes(&bytes, &port);
+            continue;
+        }
+
+        // Swapping again gives the header back.
+        swapped_count += 1;
+        try testing.expect(reference.ref_tcb_header_swap_endian(&original, header_size));
+        try testing.expect(builder.swapEndianHeader(&port));
+        try support.expectBytes(&original, &port);
+        try support.expectBytes(&bytes, &port);
+    }
+    try testing.expect(swapped_count == 1000);
+
+    // The original reads a header whatever the length it is given, so the
+    // port stands alone: it refuses fewer bytes and leaves them as they are.
+    var bytes: [header_size]u8 align(4) = @splat(0);
+    std.mem.bytesAsSlice(i32, bytes[0..8])[0] = magic;
+    std.mem.bytesAsSlice(i32, bytes[0..8])[1] = version;
+    for (0..header_size) |len| {
+        errdefer std.debug.print("  {d} bytes\n", .{len});
+        var port = bytes;
+        try testing.expect(!builder.swapEndianHeader(port[0..len]));
+        try support.expectBytes(&bytes, &port);
+    }
+}

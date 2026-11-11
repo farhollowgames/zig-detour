@@ -465,6 +465,27 @@ pub extern fn ref_path_queue_get_nav_query(queue: *const PathQueue) ?*const core
 // DetourCrowd.h
 // ---------------------------------------------------------------------------
 
+/// The values of `DetourCrowd.h`'s constants and enums, by name.
+pub extern fn ref_const_crowdagent_max_neighbours() i32;
+pub extern fn ref_const_crowdagent_max_corners() i32;
+pub extern fn ref_const_crowd_max_obstavoidance_params() i32;
+pub extern fn ref_const_crowd_max_query_filter_type() i32;
+pub extern fn ref_const_crowdagent_state_invalid() i32;
+pub extern fn ref_const_crowdagent_state_walking() i32;
+pub extern fn ref_const_crowdagent_state_offmesh() i32;
+pub extern fn ref_const_crowdagent_target_none() i32;
+pub extern fn ref_const_crowdagent_target_failed() i32;
+pub extern fn ref_const_crowdagent_target_valid() i32;
+pub extern fn ref_const_crowdagent_target_requesting() i32;
+pub extern fn ref_const_crowdagent_target_waiting_for_queue() i32;
+pub extern fn ref_const_crowdagent_target_waiting_for_path() i32;
+pub extern fn ref_const_crowdagent_target_velocity() i32;
+pub extern fn ref_const_crowd_anticipate_turns() i32;
+pub extern fn ref_const_crowd_obstacle_avoidance() i32;
+pub extern fn ref_const_crowd_separation() i32;
+pub extern fn ref_const_crowd_optimize_vis() i32;
+pub extern fn ref_const_crowd_optimize_topo() i32;
+
 /// `dtAllocCrowd`.
 pub extern fn ref_crowd_alloc() ?*Crowd;
 /// `dtFreeCrowd`.

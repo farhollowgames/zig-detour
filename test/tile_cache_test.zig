@@ -543,6 +543,8 @@ const World = struct {
     params: tile_cache.TileCacheParams,
 
     scratch: detour.BuildAllocator,
+    /// How many times the port's cache reset its scratch allocator.
+    scratch_resets: i32,
     cache: TileCache,
     nav: NavMesh,
     record: ProcessRecord,
@@ -566,7 +568,7 @@ const World = struct {
         connections: *const support.OffMeshConnections,
         options: WorldOptions,
     ) !void {
-        const reference_alloc = reference_tile_cache.ref_tc_alloc_create_default() orelse
+        const reference_alloc = reference_tile_cache.ref_tc_alloc_create_counting() orelse
             return error.OutOfMemory;
         errdefer reference_tile_cache.ref_tc_alloc_destroy(reference_alloc);
         const reference_compressor = try createReferenceCompressor();
@@ -587,7 +589,8 @@ const World = struct {
             .gpa = gpa,
             .connections = connections,
             .params = cacheParams(origin, options.tile_count_max, options.obstacle_count_max),
-            .scratch = .{ .allocator = gpa },
+            .scratch = .{ .allocator = gpa, .ptr = &self.scratch_resets, .resetFn = countReset },
+            .scratch_resets = 0,
             .cache = .empty,
             .nav = .empty,
             .record = .{},
@@ -639,6 +642,12 @@ const World = struct {
         const status = self.cache.init(gpa, &self.params, &self.scratch, portCompressor(), process);
         try support.expectStatus(expected_status, status);
         try testing.expect(status.succeeded);
+    }
+
+    /// The reset hook of the port's scratch allocator: counts the call.
+    fn countReset(ptr: ?*anyopaque) void {
+        const resets: *i32 = @ptrCast(@alignCast(ptr.?));
+        resets.* += 1;
     }
 
     fn deinit(self: *World) void {
@@ -939,6 +948,10 @@ const World = struct {
     /// Fails unless the two sides hold the same tiles, obstacles and
     /// navigation meshes, and handed their mesh processes the same things.
     fn expectSame(self: *World) !void {
+        try testing.expectEqual(
+            reference_tile_cache.ref_tc_alloc_reset_count(self.reference_alloc),
+            self.scratch_resets,
+        );
         try self.expectSameTiles();
         try self.expectSameObstacles();
         try expectSameMeshes(self.reference_nav, &self.nav);

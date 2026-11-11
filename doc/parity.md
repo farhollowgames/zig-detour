@@ -25,6 +25,7 @@ where the original casts a float it has not bounded:
 | `NavMesh.calcTileLoc` and the tile queries of `NavMesh` | the tile cell and the query box |
 | `NavMeshQuery.queryPolygons`: the query box in tree units | 6 |
 | `TileCache`: obstacle and query boxes in tiles | 5 |
+| `markCylinderArea`, `markBoxArea`, `markOrientedBoxArea`: the shape's box in cells | 6 each |
 
 Everywhere else the float is bounded before the cast and the plain
 conversion is used.
