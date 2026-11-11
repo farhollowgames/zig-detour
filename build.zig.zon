@@ -1,0 +1,22 @@
+.{
+    .name = .detour,
+    .version = "0.1.0",
+    .fingerprint = 0x38e032a7b3a5aca0, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        // The original, built only by the differential tests and the
+        // benchmark: recastnavigation 1.6.0.
+        .recastnavigation = .{
+            .url = "git+https://github.com/recastnavigation/recastnavigation?ref=v1.6.0#9f4ce64458dfae86e1239c525ddc219c4e9e06f1",
+            .hash = "N-V-__8AAEpviQDKG5xxQ618O8h8DjPI-bDJLrckL53zL_we",
+            .lazy = true,
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
