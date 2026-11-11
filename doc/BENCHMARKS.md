@@ -73,24 +73,22 @@ original, and in the last table the float port.
 - `navMeshDataSwapEndian`: both sides swap the vertices sixteen words at a
   time, and the port swaps each polygon, tree node and detail record with
   one shuffle; the cause of the rest of the gap is not found yet.
-- `closestHeightOnTriangle`: the port returns `?f32`, a float and a flag,
-  which the caller reads back through memory as one 8-byte load after two
-  smaller stores, and the processor cannot forward those stores to the load.
-  The original writes the height through a pointer. Timed apart, the
-  original's form takes 2.5 ns, the port's 3.6 ns inlined and 4.2 ns called,
-  and an out pointer 2.7 ns. The port keeps the optional, which the queries
-  inline, where the cost does not show.
+- `closestHeightOnTriangle`: the timing loop inlines the port's function,
+  and the optional it returns stays in registers; the inlined code takes the
+  same steps, in the same order, as the original's function. The cause of
+  the gap is not found yet. A version that joins the inside tests without
+  branches was no faster.
 - `overlapPolyPoly2d`, `NavMesh.addTile + removeTile` and the tile cache
   rows: each takes the same steps as the original, and the cause is not
   found yet.
-- The integer queries take 1.07 to 1.70 times as long as the float port's.
+- The integer queries take 1.09 to 1.59 times as long as the float port's.
   Their arithmetic is exact: a product of two products is 128 bits, a hit
   along a ray or an edge is an exact fraction compared by cross
   multiplication, and a rounded division is an integer division, slower
-  than the float port's. The widest gaps are `raycast` (1.70: two fraction
+  than the float port's. The widest gaps are `raycast` (1.59: two fraction
   compares per polygon edge, and a normal made unit length by a root and
-  integer divisions), `getPolyHeight` (1.44: an integer division per height)
-  and `findDistanceToWall` (1.41). Before this round of work they took 1.27 to
+  integer divisions), `getPolyHeight` (1.43: an integer division per height)
+  and `findDistanceToWall` (1.42). Before this round of work they took 1.27 to
   2.23 times as long; see `integer-design.md` for where 64 bits replaced 128
   and divisions became products.
 
@@ -187,11 +185,11 @@ original, and in the last table the float port.
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| integer NavMeshQuery.findNearestPoly | query | 145 ns | 183 ns | 1.26 | 143 ns to 146 ns | 181 ns to 185 ns |
-| integer NavMeshQuery.getPolyHeight | query | 16.5 ns | 23.8 ns | 1.44 | 16.5 ns to 16.8 ns | 23.7 ns to 24.0 ns |
-| integer NavMeshQuery.findPath | query | 2682 ns | 3015 ns | 1.12 | 2670 ns to 2700 ns | 2986 ns to 3036 ns |
-| integer NavMeshQuery.findStraightPath | query | 100 ns | 112 ns | 1.12 | 100 ns to 101 ns | 111 ns to 113 ns |
-| integer NavMeshQuery.moveAlongSurface | query | 19.1 ns | 24.8 ns | 1.30 | 19.0 ns to 19.2 ns | 24.7 ns to 24.9 ns |
-| integer NavMeshQuery.raycast | query | 33.5 ns | 57.1 ns | 1.70 | 33.4 ns to 34.2 ns | 56.9 ns to 57.6 ns |
-| integer NavMeshQuery.findPolysAroundCircle | query | 326 ns | 348 ns | 1.07 | 323 ns to 329 ns | 345 ns to 354 ns |
-| integer NavMeshQuery.findDistanceToWall | query | 91.7 ns | 129 ns | 1.41 | 91.1 ns to 92.7 ns | 128 ns to 130 ns |
+| integer NavMeshQuery.findNearestPoly | query | 143 ns | 181 ns | 1.27 | 142 ns to 145 ns | 180 ns to 182 ns |
+| integer NavMeshQuery.getPolyHeight | query | 16.4 ns | 23.5 ns | 1.43 | 16.4 ns to 16.5 ns | 23.5 ns to 23.6 ns |
+| integer NavMeshQuery.findPath | query | 2638 ns | 2931 ns | 1.11 | 2632 ns to 2649 ns | 2926 ns to 2939 ns |
+| integer NavMeshQuery.findStraightPath | query | 98.1 ns | 110 ns | 1.12 | 97.7 ns to 98.3 ns | 110 ns to 111 ns |
+| integer NavMeshQuery.moveAlongSurface | query | 18.9 ns | 23.3 ns | 1.23 | 18.8 ns to 19.1 ns | 23.2 ns to 23.3 ns |
+| integer NavMeshQuery.raycast | query | 33.2 ns | 52.9 ns | 1.59 | 33.0 ns to 33.6 ns | 52.8 ns to 53.1 ns |
+| integer NavMeshQuery.findPolysAroundCircle | query | 321 ns | 350 ns | 1.09 | 320 ns to 322 ns | 348 ns to 353 ns |
+| integer NavMeshQuery.findDistanceToWall | query | 88.8 ns | 126 ns | 1.42 | 88.2 ns to 89.1 ns | 125 ns to 126 ns |

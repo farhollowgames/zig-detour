@@ -165,8 +165,8 @@ AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
 | `TileCache.addObstacle + removeObstacle + update` | 1.08 |
 
 The machine was busy while these ran; each is the best median of three
-runs. The integer queries take 1.07 to 1.70 times as long as the float
-port's (`findPath` 1.12, `raycast` 1.70).
+runs. The integer queries take 1.09 to 1.59 times as long as the float
+port's (`findPath` 1.11, `raycast` 1.59).
 
 [`doc/TESTING.md`](doc/TESTING.md) describes the tests;
 [`doc/BENCHMARKS.md`](doc/BENCHMARKS.md) has every row, the flags, the

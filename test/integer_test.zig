@@ -1292,6 +1292,30 @@ fn planeOf(comptime T: type, points: []const [3]T, out: [][2]f64) [][2]f64 {
     return out[0..points.len];
 }
 
+/// How far the corridor's portal ends can lie from the float port's: a
+/// 255th of the edge for each link whose limits are a step apart from the
+/// float link's, as the converter may round an exact half the other way.
+fn linkLimitSlack(pair: *Pair, corridor: []const PolyRef) f64 {
+    var slack: f64 = 0;
+    for (corridor[0..corridor.len -| 1], corridor[1..]) |from, to| {
+        const a = pair.nav.getTileAndPolyByRefUnsafe(from);
+        const float_a = pair.world.nav.getTileAndPolyByRefUnsafe(from);
+        var k = a.poly.first_link;
+        while (k != detour.nav_mesh.null_link) : (k = a.tile.links[k].next) {
+            const link = a.tile.links[k];
+            if (link.ref != to) continue;
+            const float_link = float_a.tile.links[k];
+            if (float_link.bounds_min == link.bounds_min and
+                float_link.bounds_max == link.bounds_max) continue;
+            const v0 = a.tile.verts[a.poly.verts[link.edge]];
+            const v1 = a.tile.verts[a.poly.verts[(link.edge + 1) % a.poly.vert_count]];
+            const length = @sqrt(@as(f64, @floatFromInt(integer.common.vdist2dSqr(v0, v1))));
+            slack = @max(slack, length / 255.0);
+        }
+    }
+    return slack;
+}
+
 /// Whether the path through `points` passes within tolerance of each
 /// portal between two ground polygons of `corridor` on the integer mesh,
 /// in the xz plane. A portal across a tile border is the part of the edge
@@ -1564,7 +1588,10 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
                 const back = distanceToLine(millimetres(float_corner), line[0..count]);
                 off = @max(off, back - 0.5);
             }
-            if (off > tolerance) {
+            // Links whose limits are a step apart move portal ends by a
+            // 255th of their edge (integer-design.md, "Link limits can differ
+            // by one step of 1/255").
+            if (off > tolerance + linkLimitSlack(pair, path)) {
                 // Where corridor vertices meet on one line, the float port's
                 // funnel can turn on the far side of a portal and take a
                 // longer way; the exact one must then pass every portal and

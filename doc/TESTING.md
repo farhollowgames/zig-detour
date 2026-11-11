@@ -68,22 +68,32 @@ keeps the tests' own seeds. A few seeds stay fixed whatever the option: those
 paired with the original's own random number generator, the integer
 workload and the level it runs on (its hash is kept in the test), and the
 benchmark's inputs. Under seeds 1 to 6 every comparison with the original
-passes, in Debug and in ReleaseSafe. The integer comparisons then fail on a
-few cases per seed, each traced to a tolerance the tests do not yet apply,
-not to a wrong answer:
+passes, in Debug and in ReleaseSafe. Where an integer case lies outside a
+tolerance the design states, the test applies that tolerance (a link's
+limits a 255th apart move a portal end by a 255th of its edge). The cases
+below need a tolerance the design does not state. They are left failing
+under those seeds until the author decides whether to widen it:
 
-- `findPath` with a partial result: the two sides stop at different nodes
-  equally near the end, so their corridors' costs are not comparable.
+- `findPath` (seeds 1, 2, 4, 5, 6), with a partial result: the two sides
+  stop at different nodes equally near the end, so their corridors' costs
+  are not comparable.
 - `findStraightPath`: an end clamped to the boundary where the float port has
-  a near tie between an edge and a vertex (3.6 mm); a portal end at a tile
-  border whose link limits differ by a 255th of the edge (up to 14 mm, which
-  the test of corners does not allow for); and a corner 2.1 mm off.
-- `raycast`: the cost of a grazing hit, about 10 mm off, where the cost's
-  tolerance lacks the 1/sine factor the hit point's has.
-- `moveAlongSurface`: the same end within 0.5 mm with a different list of
-  visited polygons, from a tie at a shared edge.
-- `findDistanceToWall`: one normal off by 0.016, from two walls at nearly
-  the same distance.
+  a near tie between an edge and a vertex, 3.6 mm apart (seed 3); two paths
+  8.3 mm apart where the integer one is 17 mm longer (seed 6); and a float
+  path 6.8 m longer whose ray grazes a float corner more than 2 mm from the
+  exact one (seed 1).
+- `raycast`: the cost of a grazing hit, 9 to 12 mm off where 7 to 8 mm is
+  allowed (seeds 2, 3, 4); the cost's tolerance lacks the 1/sine factor the
+  hit point's has.
+- `moveAlongSurface`: the same end with a different list of visited
+  polygons, from a tie at a shared edge (seed 2).
+- `findDistanceToWall`: one normal 0.016 off, from two walls at nearly the
+  same distance (seed 4).
+
+Two more are not explained yet, both on the dungeon level under seed 5: a
+`raycast` hit point 23 mm lower than the float port's (12.8 mm allowed), and
+a `moveAlongSurface` end at a height 405 mm from the float port's. They need
+a look before any tolerance is set.
 
 Queries on separate `NavMeshQuery` values over one shared `NavMesh` give the
 same bytes on 1, 2 and many threads, the way the original documents its use

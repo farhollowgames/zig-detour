@@ -99,6 +99,9 @@ and 128 bits otherwise, so its answers do not change:
 
 - `divRound` divides in 64 bits when the numerator and the denominator both
   fit `i64`, checked at run time.
+- Two fractions compare by cross multiplying. Each product is first taken
+  in 64 bits with an overflow check, and both are taken again in 128 bits
+  when either overflows.
 - The height on a detail triangle is `dy0 * u + dy1 * v` over the
   barycentric denominator, with `|dy| <= 2^30` and `0 <= u, v <= 2^61`: up to
   `2^92`. It is worked out in 64 bits with overflow checks, and again in 128
@@ -115,11 +118,12 @@ and 128 bits otherwise, so its answers do not change:
   den + dir * num) * 255` with `span * bounds * den`. Each product is of two
   values within 64 bits (`span * bounds < 2^38`, `den <= 2^61`), so each is a
   single widening multiply; the sides stay within `2^100`.
-- The root in `isqrt` starts from a 192-entry table of the root of each top
-  byte, rounded up, and takes two of Newton's steps. Worked out for the first
-  number of every top byte, where the start is furthest from the root, two
-  steps leave less than one above the root, so one decrement makes it exact.
-  A unit test checks the ends of every top byte at every even shift.
+- The root in `isqrt` takes one division. It starts from the tangent to the
+  root at the middle of the number's top byte, from a 192-entry table, raised
+  by three: the root is concave, so the tangent lies above it, by at most
+  `2^14` over a byte's numbers. One of Newton's steps from above then leaves
+  less than `1/8` above the root, and one decrement makes it exact. A unit
+  test checks the ends of every top byte at every even shift.
 
 Path costs add up with saturation at the largest `u64`, and a step's cost
 (its length times the area cost) is worked out in `u128` and clamped to it. A
@@ -440,11 +444,11 @@ are stable, so it cannot pass by skipping.
 | query | what must hold on a stable case |
 | --- | --- |
 | converter | every vertex within 0.5 mm of the float one, an off-mesh connection's ends within `T` as the nearest points they are snapped to; links the same, limits within one step; every tree box holds the float box and the integer geometry |
-| `findNearestPoly` | same polygon and over-flag, point within `T`; a different polygon only where the two trees' searches differ at the box's border, or where two polygons lie equally near within `T`, each at most 5% of the stable cases |
+| `findNearestPoly` | same polygon and over-flag, point within `T`; a different polygon only where the two trees' searches differ at the box's border, or where two polygons lie equally near within `T`; border cases at most 1/64 of the stable cases and ties at most 4 |
 | `queryPolygons` | same set, but for polygons whose integer tree box is within two tree cells of the query box's border (the query box is widened by up to two cells on either side) |
 | `closestPointOnPoly`, `closestPointOnPolyBoundary`, `getPolyHeight` | same status and over-flag, point within `T`, height within `2 T` |
 | `findPath`, sliced | same status; the same corridor, or one whose cost, summed by one evaluator on both, is within 0.1% plus 1 mm per polygon; at least 90% the same corridor |
-| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other; same flags and polygons at the corners both have, where a corner at a vertex several portals share may name either polygon that holds it; with the crossing options both paths are held against the float corners alone, since the float port extends a crossing past its portal; where vertices of the corridor meet on one line the float funnel can turn on the far side of a portal and take a longer way, and the integer path must then pass within `T` of every portal and be no longer (at most 2% of the stable cases) |
+| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other, plus 1/255 of the edge of each corridor link whose limits are a step apart; same flags and polygons at the corners both have, where a corner at a vertex several portals share may name either polygon that holds it; with the crossing options both paths are held against the float corners alone, since the float port extends a crossing past its portal; where vertices of the corridor meet on one line the float funnel can turn on the far side of a portal and take a longer way, and the integer path must then pass within `T` of every portal and be no longer (at most 2% of the stable cases) |
 | `raycast` | same polygons crossed and same hit edge; hit point within `T` over the sine of the angle between ray and wall (a wall moved by `T` moves the hit along the ray by that much); normal within `2^-10`; cost within 0.1% plus `1 + 2 T` mm per polygon crossed plus `T` |
 | `moveAlongSurface` | same polygons visited, result within `T` |
 | `findPolysAroundCircle`, `findPolysAroundShape`, `findLocalNeighbourhood` | same polygons and parents; costs within 0.1% plus, per polygon of depth, `1 + 2 T` mm times the dearest area cost, plus `T` |

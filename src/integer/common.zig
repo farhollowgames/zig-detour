@@ -40,9 +40,12 @@ pub const Fraction = struct {
     }
 
     pub inline fn order(a: Fraction, b: Fraction) std.math.Order {
-        const left = @as(i128, a.num) * b.den;
-        const right = @as(i128, b.num) * a.den;
-        return std.math.order(left, right);
+        // Most products fit 64 bits, one instruction each; the others are
+        // worked out in 128.
+        const left = @mulWithOverflow(a.num, b.den);
+        const right = @mulWithOverflow(b.num, a.den);
+        if (left[1] | right[1] == 0) return std.math.order(left[0], right[0]);
+        return std.math.order(@as(i128, a.num) * b.den, @as(i128, b.num) * a.den);
     }
 
     pub inline fn lessThan(a: Fraction, b: Fraction) bool {
@@ -93,25 +96,29 @@ inline fn divRoundNarrow(n: i64, d: i64) i64 {
     return if (n < 0) quotient - 1 else quotient + 1;
 }
 
-/// The root of the first value of each top byte's successor, for the top
-/// bytes 64 to 255 of a number of 64 bits: `ceil(sqrt((byte + 1) << 56))`
-/// in units of 2^16. It is at or above the root of every number with that
-/// top byte, and within 2^-7 of it.
-const root_estimates: [192]u32 = blk: {
-    @setEvalBranchQuota(10_000);
-    var estimates: [192]u32 = undefined;
-    for (&estimates, 64..) |*estimate, byte| {
-        // The rounded-up root of (byte + 1) * 2^24, by bisection.
-        const square: u64 = (byte + 1) << 24;
-        var low: u64 = 0;
-        var high: u64 = 1 << 16;
-        while (low < high) {
-            const middle = (low + high) / 2;
-            if (middle * middle < square) low = middle + 1 else high = middle;
+/// A line above the root over each top byte 64 to 255 of a number of 64
+/// bits: the tangent to the root at the middle of the byte's numbers,
+/// raised by three. `at_middle` is the root there rounded down plus three,
+/// and `slope` the tangent's slope in units of 2^-96, rounded up.
+const RootLine = struct { at_middle: u64, slope: u64 };
+
+const root_lines: [192]RootLine = blk: {
+    @setEvalBranchQuota(20_000);
+    var lines: [192]RootLine = undefined;
+    for (&lines, 64..) |*line, byte| {
+        const middle: u64 = (byte << 56) | (1 << 55);
+        // The root of the middle rounded down, by bisection.
+        var low: u64 = 1 << 31;
+        var high: u64 = 1 << 32;
+        while (high - low > 1) {
+            const mid = (low + high) / 2;
+            if (@as(u128, mid) * mid <= middle) low = mid else high = mid;
         }
-        estimate.* = low;
+        // The slope of the root, 1 / (2 * sqrt), is at most 2^95 / low.
+        const slope: u128 = ((1 << 95) + @as(u128, low) - 1) / low;
+        line.* = .{ .at_middle = low + 3, .slope = @intCast(slope) };
     }
-    break :blk estimates;
+    break :blk lines;
 };
 
 /// The largest `r` with `r * r <= x`.
@@ -122,13 +129,19 @@ pub fn isqrt(x: u64) u32 {
     // root of `x` rounded down.
     const shift: u6 = @intCast(@clz(x) & 0x3e);
     const shifted = x << shift;
-    // An estimate within 2^-7 at or above the root, then two of Newton's
-    // steps, each squaring the error and staying at or above the root
-    // rounded down. The error is largest at the first number of a top byte,
-    // and there, worked out exactly for all 192, two steps leave less than
-    // one above the root: at most one above the root rounded down.
-    var root: u64 = @as(u64, root_estimates[(shifted >> 56) - 64]) << 16;
-    root = (root + shifted / root) / 2;
+    // The root is concave, so its tangent at the middle of the top byte's
+    // numbers lies above it, by at most `(2^55)^2 / 2` times the root's
+    // largest second derivative, `2^-95`: `2^14`. The three added cover the
+    // rounding of the tangent, so the estimate is at or above the root and
+    // within `2^14 + 4` of it.
+    const line = root_lines[(shifted >> 56) - 64];
+    const middle = (shifted & ~@as(u64, (1 << 56) - 1)) | (1 << 55);
+    const offset: i64 = @bitCast(shifted -% middle);
+    const rise: i64 = @intCast((@as(i128, offset) * line.slope) >> 96);
+    var root: u64 = @intCast(@as(i64, @intCast(line.at_middle)) + rise);
+    // One of Newton's steps from above stays at or above the root rounded
+    // down, and leaves at most `(2^14 + 4)^2 / 2^32 < 1/8` above the root:
+    // at most one above the root rounded down.
     root = (root + shifted / root) / 2;
     root -= @intFromBool(@as(u128, root) * root > shifted);
     return @intCast(root >> (shift / 2));
@@ -632,7 +645,7 @@ test "isqrt is the exact root rounded down" {
     try expectRoot(std.math.maxInt(u64));
     try testing.expectEqual(@as(u32, std.math.maxInt(u32)), isqrt(std.math.maxInt(u64)));
 
-    // The ends of every top byte of the estimate table, at every even shift,
+    // The ends of every top byte of the line table, at every even shift,
     // where the estimate is furthest from the root.
     for (64..256) |byte| {
         var even_shift: u7 = 0;
