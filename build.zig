@@ -62,6 +62,7 @@ pub fn build(b: *std.Build) void {
     ) orelse &.{};
 
     const test_step = b.step("test", "Run unit and differential tests");
+    const bench_step = b.step("bench", "Time the port against the original (ReleaseFast)");
 
     for (test_configurations) |configuration| {
         const unit_tests = b.addTest(.{
@@ -72,8 +73,8 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(unit_tests).step);
     }
 
-    // The original is fetched only to test this package itself, never for a
-    // package that depends on it.
+    // The original is fetched only to test and time this package itself,
+    // never for a package that depends on it.
     if (!b.isRoot()) return;
     const upstream = b.lazyDependency("recastnavigation", .{}) orelse return;
     const recast = recastLibrary(b, upstream, target);
@@ -103,6 +104,34 @@ pub fn build(b: *std.Build) void {
         addIntegerSources(b, differential.root_module);
         test_step.dependOn(&b.addRunArtifact(differential).step);
     }
+
+    const bench_options = optionsModule(b, .{});
+    const bench = b.addExecutable(.{
+        .name = "bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/bench.zig"),
+            .target = target,
+            .optimize = .fast,
+            .link_libc = true,
+        }),
+    });
+    // The tests' meshes and their bindings to the original, as one module.
+    const support = b.createModule(.{
+        .root_source_file = b.path("test/support.zig"),
+        .target = target,
+        .optimize = .fast,
+        .imports = &.{
+            .{ .name = "detour", .module = detourModule(b, target, .fast, bench_options) },
+            .{ .name = "build_options", .module = bench_options },
+        },
+    });
+    addMeshes(b, upstream, support);
+    bench.root_module.addImport("support", support);
+    bench.root_module.linkLibrary(upstreamLibrary(b, upstream, target, .{}, false));
+    bench.root_module.linkLibrary(recast);
+    const run_bench = b.addRunArtifact(bench);
+    run_bench.addPassthruArgs();
+    bench_step.dependOn(&run_bench.step);
 }
 
 fn optionsModule(b: *std.Build, configuration: Configuration) *std.Build.Module {
@@ -197,7 +226,8 @@ const cpp_flags = [_][]const u8{
 ///
 /// The navigation mesh builder sorts with the C library's `qsort`, which
 /// may order equal items any way. `oracle` gives it a stable sort instead,
-/// the order the port's sort gives, so the tests can compare bytes.
+/// the order the port's sort gives, so the tests can compare bytes. Without
+/// `oracle` it is built as it ships, at `-O3`, for the benchmark.
 fn upstreamLibrary(
     b: *std.Build,
     upstream: *std.Build.Dependency,
@@ -228,6 +258,7 @@ fn upstreamLibrary(
         flags.append(b.allocator, "-DDT_VIRTUAL_QUERYFILTER") catch @panic("OOM");
     }
     if (configuration.fast_math) flags.append(b.allocator, "-DRC_FAST_MATH") catch @panic("OOM");
+    if (!oracle) flags.append(b.allocator, "-O3") catch @panic("OOM");
 
     for (upstream_libraries) |library| {
         module.addIncludePath(upstream.path(b.fmt("{s}/Include", .{library.directory})));

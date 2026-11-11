@@ -19,22 +19,22 @@ original, and why.
 
 | library | upstream header | Zig file | entries | not started | ported | oracle-tested | benchmarked | reviewed |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Detour | DetourNavMesh.h | `src/nav_mesh.zig` | 69 |  |  | 69 |  |  |
-| Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  |  | 4 |  |  |
-| Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  |  | 45 |  |  |
+| Detour | DetourNavMesh.h | `src/nav_mesh.zig` | 69 |  |  | 52 | 17 |  |
+| Detour | DetourNavMeshBuilder.h | `src/nav_mesh_builder.zig` | 4 |  |  | 1 | 3 |  |
+| Detour | DetourNavMeshQuery.h | `src/nav_mesh_query.zig` | 45 |  |  | 22 | 23 |  |
 | Detour | DetourNode.h | `src/node.zig` | 33 |  |  | 33 |  |  |
-| Detour | DetourCommon.h | `src/common.zig` | 44 |  |  | 44 |  |  |
+| Detour | DetourCommon.h | `src/common.zig` | 44 |  |  | 34 | 10 |  |
 | Detour | DetourStatus.h | `src/status.zig` | 17 |  |  | 17 |  |  |
 | Detour | DetourMath.h | `src/common.zig` | 1 |  |  | 1 |  |  |
-| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  |  | 37 |  |  |
+| DetourCrowd | DetourCrowd.h | `src/crowd.zig` | 37 |  |  | 33 | 4 |  |
 | DetourCrowd | DetourPathCorridor.h | `src/path_corridor.zig` | 24 |  |  | 24 |  |  |
 | DetourCrowd | DetourPathQueue.h | `src/path_queue.zig` | 11 |  |  | 11 |  |  |
 | DetourCrowd | DetourLocalBoundary.h | `src/local_boundary.zig` | 8 |  |  | 8 |  |  |
-| DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  |  | 33 |  |  |
+| DetourCrowd | DetourObstacleAvoidance.h | `src/obstacle_avoidance.zig` | 33 |  |  | 28 | 5 |  |
 | DetourCrowd | DetourProximityGrid.h | `src/proximity_grid.zig` | 10 |  |  | 10 |  |  |
-| DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 49 |  |  |
+| DetourTileCache | DetourTileCache.h | `src/tile_cache.zig` | 49 |  |  | 42 | 7 |  |
 | DetourTileCache | DetourTileCacheBuilder.h | `src/tile_cache_builder.zig` | 30 |  |  | 30 |  |  |
-| | | **all** | 415 |  |  | 415 |  |  |
+| | | **all** | 415 |  |  | 346 | 69 |  |
 
 The differential tests run twice: with every build switch off, and with every one on.
 
@@ -113,29 +113,29 @@ yes.
 | `dtNavMesh::init(params)` | `NavMesh.init` | oracle-tested |
 | `dtNavMesh::init(data, dataSize, flags)` | `NavMesh.initSingleTile` | oracle-tested |
 | `dtNavMesh::getParams` | `NavMesh.getParams` | oracle-tested |
-| `dtNavMesh::addTile` | `NavMesh.addTile` | oracle-tested |
-| `dtNavMesh::removeTile` | `NavMesh.removeTile` | oracle-tested |
-| `dtNavMesh::calcTileLoc` | `NavMesh.calcTileLoc` | oracle-tested |
-| `dtNavMesh::getTileAt` | `NavMesh.getTileAt` | oracle-tested |
-| `dtNavMesh::getTilesAt` | `NavMesh.getTilesAt` | oracle-tested |
-| `dtNavMesh::getTileRefAt` | `NavMesh.getTileRefAt` | oracle-tested |
+| `dtNavMesh::addTile` | `NavMesh.addTile` | benchmarked |
+| `dtNavMesh::removeTile` | `NavMesh.removeTile` | benchmarked |
+| `dtNavMesh::calcTileLoc` | `NavMesh.calcTileLoc` | benchmarked |
+| `dtNavMesh::getTileAt` | `NavMesh.getTileAt` | benchmarked |
+| `dtNavMesh::getTilesAt` | `NavMesh.getTilesAt` | benchmarked |
+| `dtNavMesh::getTileRefAt` | `NavMesh.getTileRefAt` | benchmarked |
 | `dtNavMesh::getTileRef` | `NavMesh.getTileRef` | oracle-tested |
-| `dtNavMesh::getTileByRef` | `NavMesh.getTileByRef` | oracle-tested |
+| `dtNavMesh::getTileByRef` | `NavMesh.getTileByRef` | benchmarked |
 | `dtNavMesh::getMaxTiles` | `NavMesh.getMaxTiles` | oracle-tested |
 | `dtNavMesh::getTile` | `NavMesh.getTile` | oracle-tested |
-| `dtNavMesh::getTileAndPolyByRef` | `NavMesh.getTileAndPolyByRef` | oracle-tested |
+| `dtNavMesh::getTileAndPolyByRef` | `NavMesh.getTileAndPolyByRef` | benchmarked |
 | `dtNavMesh::getTileAndPolyByRefUnsafe` | `NavMesh.getTileAndPolyByRefUnsafe` | oracle-tested |
-| `dtNavMesh::isValidPolyRef` | `NavMesh.isValidPolyRef` | oracle-tested |
+| `dtNavMesh::isValidPolyRef` | `NavMesh.isValidPolyRef` | benchmarked |
 | `dtNavMesh::getPolyRefBase` | `NavMesh.getPolyRefBase` | oracle-tested |
-| `dtNavMesh::getOffMeshConnectionPolyEndPoints` | `NavMesh.getOffMeshConnectionPolyEndPoints` | oracle-tested |
-| `dtNavMesh::getOffMeshConnectionByRef` | `NavMesh.getOffMeshConnectionByRef` | oracle-tested |
-| `dtNavMesh::setPolyFlags` | `NavMesh.setPolyFlags` | oracle-tested |
-| `dtNavMesh::getPolyFlags` | `NavMesh.getPolyFlags` | oracle-tested |
-| `dtNavMesh::setPolyArea` | `NavMesh.setPolyArea` | oracle-tested |
-| `dtNavMesh::getPolyArea` | `NavMesh.getPolyArea` | oracle-tested |
+| `dtNavMesh::getOffMeshConnectionPolyEndPoints` | `NavMesh.getOffMeshConnectionPolyEndPoints` | benchmarked |
+| `dtNavMesh::getOffMeshConnectionByRef` | `NavMesh.getOffMeshConnectionByRef` | benchmarked |
+| `dtNavMesh::setPolyFlags` | `NavMesh.setPolyFlags` | benchmarked |
+| `dtNavMesh::getPolyFlags` | `NavMesh.getPolyFlags` | benchmarked |
+| `dtNavMesh::setPolyArea` | `NavMesh.setPolyArea` | benchmarked |
+| `dtNavMesh::getPolyArea` | `NavMesh.getPolyArea` | benchmarked |
 | `dtNavMesh::getTileStateSize` | `NavMesh.getTileStateSize` | oracle-tested |
-| `dtNavMesh::storeTileState` | `NavMesh.storeTileState` | oracle-tested |
-| `dtNavMesh::restoreTileState` | `NavMesh.restoreTileState` | oracle-tested |
+| `dtNavMesh::storeTileState` | `NavMesh.storeTileState` | benchmarked |
+| `dtNavMesh::restoreTileState` | `NavMesh.restoreTileState` | benchmarked |
 | `dtNavMesh::encodePolyId` | `NavMesh.encodePolyId` | oracle-tested |
 | `dtNavMesh::decodePolyId` | `NavMesh.decodePolyId` | oracle-tested |
 | `dtNavMesh::decodePolyIdSalt` | `NavMesh.decodePolyIdSalt` | oracle-tested |
@@ -147,9 +147,9 @@ yes.
 | upstream | Zig | state |
 | --- | --- | --- |
 | `dtNavMeshCreateParams`: `verts`, `vertCount`, `polys`, `polyFlags`, `polyAreas`, `polyCount`, `nvp`, `detailMeshes`, `detailVerts`, `detailVertsCount`, `detailTris`, `detailTriCount`, `offMeshConVerts`, `offMeshConRad`, `offMeshConFlags`, `offMeshConAreas`, `offMeshConDir`, `offMeshConUserID`, `offMeshConCount`, `userId`, `tileX`, `tileY`, `tileLayer`, `bmin`, `bmax`, `walkableHeight`, `walkableRadius`, `walkableClimb`, `cs`, `ch`, `buildBvTree` | `NavMeshCreateParams` | oracle-tested |
-| `dtCreateNavMeshData` | `createNavMeshData` | oracle-tested |
-| `dtNavMeshHeaderSwapEndian` | `navMeshHeaderSwapEndian` | oracle-tested |
-| `dtNavMeshDataSwapEndian` | `navMeshDataSwapEndian` | oracle-tested |
+| `dtCreateNavMeshData` | `createNavMeshData` | benchmarked |
+| `dtNavMeshHeaderSwapEndian` | `navMeshHeaderSwapEndian` | benchmarked |
+| `dtNavMeshDataSwapEndian` | `navMeshDataSwapEndian` | benchmarked |
 
 ### DetourNavMeshQuery.h → `src/nav_mesh_query.zig`
 
@@ -172,31 +172,31 @@ yes.
 | `dtNavMeshQuery::dtNavMeshQuery` | `NavMeshQuery.empty` | oracle-tested |
 | `dtNavMeshQuery::~dtNavMeshQuery` | `NavMeshQuery.deinit` | oracle-tested |
 | `dtNavMeshQuery::init` | `NavMeshQuery.init` | oracle-tested |
-| `dtNavMeshQuery::findPath` | `NavMeshQuery.findPath` | oracle-tested |
-| `dtNavMeshQuery::findStraightPath` | `NavMeshQuery.findStraightPath` | oracle-tested |
-| `dtNavMeshQuery::initSlicedFindPath` | `NavMeshQuery.initSlicedFindPath` | oracle-tested |
-| `dtNavMeshQuery::updateSlicedFindPath` | `NavMeshQuery.updateSlicedFindPath` | oracle-tested |
-| `dtNavMeshQuery::finalizeSlicedFindPath` | `NavMeshQuery.finalizeSlicedFindPath` | oracle-tested |
+| `dtNavMeshQuery::findPath` | `NavMeshQuery.findPath` | benchmarked |
+| `dtNavMeshQuery::findStraightPath` | `NavMeshQuery.findStraightPath` | benchmarked |
+| `dtNavMeshQuery::initSlicedFindPath` | `NavMeshQuery.initSlicedFindPath` | benchmarked |
+| `dtNavMeshQuery::updateSlicedFindPath` | `NavMeshQuery.updateSlicedFindPath` | benchmarked |
+| `dtNavMeshQuery::finalizeSlicedFindPath` | `NavMeshQuery.finalizeSlicedFindPath` | benchmarked |
 | `dtNavMeshQuery::finalizeSlicedFindPathPartial` | `NavMeshQuery.finalizeSlicedFindPathPartial` | oracle-tested |
-| `dtNavMeshQuery::findPolysAroundCircle` | `NavMeshQuery.findPolysAroundCircle` | oracle-tested |
-| `dtNavMeshQuery::findPolysAroundShape` | `NavMeshQuery.findPolysAroundShape` | oracle-tested |
+| `dtNavMeshQuery::findPolysAroundCircle` | `NavMeshQuery.findPolysAroundCircle` | benchmarked |
+| `dtNavMeshQuery::findPolysAroundShape` | `NavMeshQuery.findPolysAroundShape` | benchmarked |
 | `dtNavMeshQuery::getPathFromDijkstraSearch` | `NavMeshQuery.getPathFromDijkstraSearch` | oracle-tested |
-| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt)` | `NavMeshQuery.findNearestPoly`, `is_over_poly` null | oracle-tested |
-| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt, isOverPoly)` | `NavMeshQuery.findNearestPoly` | oracle-tested |
-| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, polys, polyCount, maxPolys)` | `NavMeshQuery.queryPolygons` | oracle-tested |
-| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, query)` | `NavMeshQuery.queryPolygonsWith` | oracle-tested |
-| `dtNavMeshQuery::findLocalNeighbourhood` | `NavMeshQuery.findLocalNeighbourhood` | oracle-tested |
-| `dtNavMeshQuery::moveAlongSurface` | `NavMeshQuery.moveAlongSurface` | oracle-tested |
-| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, t, hitNormal, path, pathCount, maxPath)` | `NavMeshQuery.raycastPath` | oracle-tested |
-| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, options, hit, prevRef)` | `NavMeshQuery.raycast` | oracle-tested |
-| `dtNavMeshQuery::findDistanceToWall` | `NavMeshQuery.findDistanceToWall` | oracle-tested |
-| `dtNavMeshQuery::getPolyWallSegments` | `NavMeshQuery.getPolyWallSegments` | oracle-tested |
-| `dtNavMeshQuery::findRandomPoint` | `NavMeshQuery.findRandomPoint` | oracle-tested |
-| `dtNavMeshQuery::findRandomPointAroundCircle` | `NavMeshQuery.findRandomPointAroundCircle` | oracle-tested |
-| `dtNavMeshQuery::closestPointOnPoly` | `NavMeshQuery.closestPointOnPoly` | oracle-tested |
-| `dtNavMeshQuery::closestPointOnPolyBoundary` | `NavMeshQuery.closestPointOnPolyBoundary` | oracle-tested |
-| `dtNavMeshQuery::getPolyHeight` | `NavMeshQuery.getPolyHeight` | oracle-tested |
-| `dtNavMeshQuery::isValidPolyRef` | `NavMeshQuery.isValidPolyRef` | oracle-tested |
+| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt)` | `NavMeshQuery.findNearestPoly`, `is_over_poly` null | benchmarked |
+| `dtNavMeshQuery::findNearestPoly(center, halfExtents, filter, nearestRef, nearestPt, isOverPoly)` | `NavMeshQuery.findNearestPoly` | benchmarked |
+| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, polys, polyCount, maxPolys)` | `NavMeshQuery.queryPolygons` | benchmarked |
+| `dtNavMeshQuery::queryPolygons(center, halfExtents, filter, query)` | `NavMeshQuery.queryPolygonsWith` | benchmarked |
+| `dtNavMeshQuery::findLocalNeighbourhood` | `NavMeshQuery.findLocalNeighbourhood` | benchmarked |
+| `dtNavMeshQuery::moveAlongSurface` | `NavMeshQuery.moveAlongSurface` | benchmarked |
+| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, t, hitNormal, path, pathCount, maxPath)` | `NavMeshQuery.raycastPath` | benchmarked |
+| `dtNavMeshQuery::raycast(startRef, startPos, endPos, filter, options, hit, prevRef)` | `NavMeshQuery.raycast` | benchmarked |
+| `dtNavMeshQuery::findDistanceToWall` | `NavMeshQuery.findDistanceToWall` | benchmarked |
+| `dtNavMeshQuery::getPolyWallSegments` | `NavMeshQuery.getPolyWallSegments` | benchmarked |
+| `dtNavMeshQuery::findRandomPoint` | `NavMeshQuery.findRandomPoint` | benchmarked |
+| `dtNavMeshQuery::findRandomPointAroundCircle` | `NavMeshQuery.findRandomPointAroundCircle` | benchmarked |
+| `dtNavMeshQuery::closestPointOnPoly` | `NavMeshQuery.closestPointOnPoly` | benchmarked |
+| `dtNavMeshQuery::closestPointOnPolyBoundary` | `NavMeshQuery.closestPointOnPolyBoundary` | benchmarked |
+| `dtNavMeshQuery::getPolyHeight` | `NavMeshQuery.getPolyHeight` | benchmarked |
+| `dtNavMeshQuery::isValidPolyRef` | `NavMeshQuery.isValidPolyRef` | benchmarked |
 | `dtNavMeshQuery::isInClosedList` | `NavMeshQuery.isInClosedList` | oracle-tested |
 | `dtNavMeshQuery::getNodePool` | `NavMeshQuery.getNodePool` | oracle-tested |
 | `dtNavMeshQuery::getAttachedNavMesh` | `NavMeshQuery.getAttachedNavMesh` | oracle-tested |
@@ -272,21 +272,21 @@ yes.
 | `dtTriArea2D` | `triArea2d` | oracle-tested |
 | `dtOverlapQuantBounds` | `overlapQuantBounds` | oracle-tested |
 | `dtOverlapBounds` | `overlapBounds` | oracle-tested |
-| `dtClosestPtPointTriangle` | `closestPointOnTriangle` | oracle-tested |
-| `dtClosestHeightPointTriangle` | `closestHeightOnTriangle` | oracle-tested |
-| `dtIntersectSegmentPoly2D` | `intersectSegmentPoly2d` | oracle-tested |
-| `dtIntersectSegSeg2D` | `intersectSegmentSegment2d` | oracle-tested |
-| `dtPointInPolygon` | `pointInPolygon` | oracle-tested |
-| `dtDistancePtPolyEdgesSqr` | `distancePointPolyEdgesSqr` | oracle-tested |
-| `dtDistancePtSegSqr2D` | `distancePointSegmentSqr2d` | oracle-tested |
-| `dtCalcPolyCenter` | `calcPolyCenter` | oracle-tested |
-| `dtOverlapPolyPoly2D` | `overlapPolyPoly2d` | oracle-tested |
+| `dtClosestPtPointTriangle` | `closestPointOnTriangle` | benchmarked |
+| `dtClosestHeightPointTriangle` | `closestHeightOnTriangle` | benchmarked |
+| `dtIntersectSegmentPoly2D` | `intersectSegmentPoly2d` | benchmarked |
+| `dtIntersectSegSeg2D` | `intersectSegmentSegment2d` | benchmarked |
+| `dtPointInPolygon` | `pointInPolygon` | benchmarked |
+| `dtDistancePtPolyEdgesSqr` | `distancePointPolyEdgesSqr` | benchmarked |
+| `dtDistancePtSegSqr2D` | `distancePointSegmentSqr2d` | benchmarked |
+| `dtCalcPolyCenter` | `calcPolyCenter` | benchmarked |
+| `dtOverlapPolyPoly2D` | `overlapPolyPoly2d` | benchmarked |
 | `dtNextPow2` | `nextPow2` | oracle-tested |
 | `dtIlog2` | `ilog2` | oracle-tested |
 | `dtAlign4` | `align4` | oracle-tested |
 | `dtOppositeTile` | `oppositeTile` | oracle-tested |
 | `dtSwapEndian` for `float` | `swapEndianFloat` | oracle-tested |
-| `dtRandomPointInConvexPoly` | `randomPointInConvexPoly` | oracle-tested |
+| `dtRandomPointInConvexPoly` | `randomPointInConvexPoly` | benchmarked |
 
 ### DetourStatus.h → `src/status.zig`
 
@@ -343,14 +343,14 @@ yes.
 | `dtCrowd::getAgent` | `Crowd.getAgent` | oracle-tested |
 | `dtCrowd::getEditableAgent` | `Crowd.getEditableAgent` | oracle-tested |
 | `dtCrowd::getAgentCount` | `Crowd.getAgentCount` | oracle-tested |
-| `dtCrowd::addAgent` | `Crowd.addAgent` | oracle-tested |
+| `dtCrowd::addAgent` | `Crowd.addAgent` | benchmarked |
 | `dtCrowd::updateAgentParameters` | `Crowd.updateAgentParameters` | oracle-tested |
-| `dtCrowd::removeAgent` | `Crowd.removeAgent` | oracle-tested |
-| `dtCrowd::requestMoveTarget` | `Crowd.requestMoveTarget` | oracle-tested |
+| `dtCrowd::removeAgent` | `Crowd.removeAgent` | benchmarked |
+| `dtCrowd::requestMoveTarget` | `Crowd.requestMoveTarget` | benchmarked |
 | `dtCrowd::requestMoveVelocity` | `Crowd.requestMoveVelocity` | oracle-tested |
 | `dtCrowd::resetMoveTarget` | `Crowd.resetMoveTarget` | oracle-tested |
 | `dtCrowd::getActiveAgents` | `Crowd.getActiveAgents` | oracle-tested |
-| `dtCrowd::update` | `Crowd.update` | oracle-tested |
+| `dtCrowd::update` | `Crowd.update` | benchmarked |
 | `dtCrowd::getFilter` | `Crowd.getFilter` | oracle-tested |
 | `dtCrowd::getEditableFilter` | `Crowd.getEditableFilter` | oracle-tested |
 | `dtCrowd::getQueryHalfExtents` | `Crowd.getQueryHalfExtents` | oracle-tested |
@@ -446,11 +446,11 @@ yes.
 | `dtObstacleAvoidanceQuery::dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.empty` | oracle-tested |
 | `dtObstacleAvoidanceQuery::~dtObstacleAvoidanceQuery` | `ObstacleAvoidanceQuery.deinit` | oracle-tested |
 | `dtObstacleAvoidanceQuery::init` | `ObstacleAvoidanceQuery.init` | oracle-tested |
-| `dtObstacleAvoidanceQuery::reset` | `ObstacleAvoidanceQuery.reset` | oracle-tested |
-| `dtObstacleAvoidanceQuery::addCircle` | `ObstacleAvoidanceQuery.addCircle` | oracle-tested |
-| `dtObstacleAvoidanceQuery::addSegment` | `ObstacleAvoidanceQuery.addSegment` | oracle-tested |
-| `dtObstacleAvoidanceQuery::sampleVelocityGrid` | `ObstacleAvoidanceQuery.sampleVelocityGrid` | oracle-tested |
-| `dtObstacleAvoidanceQuery::sampleVelocityAdaptive` | `ObstacleAvoidanceQuery.sampleVelocityAdaptive` | oracle-tested |
+| `dtObstacleAvoidanceQuery::reset` | `ObstacleAvoidanceQuery.reset` | benchmarked |
+| `dtObstacleAvoidanceQuery::addCircle` | `ObstacleAvoidanceQuery.addCircle` | benchmarked |
+| `dtObstacleAvoidanceQuery::addSegment` | `ObstacleAvoidanceQuery.addSegment` | benchmarked |
+| `dtObstacleAvoidanceQuery::sampleVelocityGrid` | `ObstacleAvoidanceQuery.sampleVelocityGrid` | benchmarked |
+| `dtObstacleAvoidanceQuery::sampleVelocityAdaptive` | `ObstacleAvoidanceQuery.sampleVelocityAdaptive` | benchmarked |
 | `dtObstacleAvoidanceQuery::getObstacleCircleCount` | `ObstacleAvoidanceQuery.getObstacleCircleCount` | oracle-tested |
 | `dtObstacleAvoidanceQuery::getObstacleCircle` | `ObstacleAvoidanceQuery.getObstacleCircle` | oracle-tested |
 | `dtObstacleAvoidanceQuery::getObstacleSegmentCount` | `ObstacleAvoidanceQuery.getObstacleSegmentCount` | oracle-tested |
@@ -508,16 +508,16 @@ yes.
 | `dtTileCache::getTileAt` | `TileCache.getTileAt` | oracle-tested |
 | `dtTileCache::getTileRef` | `TileCache.getTileRef` | oracle-tested |
 | `dtTileCache::getTileByRef` | `TileCache.getTileByRef` | oracle-tested |
-| `dtTileCache::addTile` | `TileCache.addTile` | oracle-tested |
-| `dtTileCache::removeTile` | `TileCache.removeTile` | oracle-tested |
-| `dtTileCache::addObstacle` | `TileCache.addObstacle` | oracle-tested |
+| `dtTileCache::addTile` | `TileCache.addTile` | benchmarked |
+| `dtTileCache::removeTile` | `TileCache.removeTile` | benchmarked |
+| `dtTileCache::addObstacle` | `TileCache.addObstacle` | benchmarked |
 | `dtTileCache::addBoxObstacle(bmin, bmax, result)` | `TileCache.addBoxObstacle` | oracle-tested |
 | `dtTileCache::addBoxObstacle(center, halfExtents, yRadians, result)` | `TileCache.addOrientedBoxObstacle` | oracle-tested |
-| `dtTileCache::removeObstacle` | `TileCache.removeObstacle` | oracle-tested |
-| `dtTileCache::queryTiles` | `TileCache.queryTiles` | oracle-tested |
-| `dtTileCache::update` | `TileCache.update` | oracle-tested |
+| `dtTileCache::removeObstacle` | `TileCache.removeObstacle` | benchmarked |
+| `dtTileCache::queryTiles` | `TileCache.queryTiles` | benchmarked |
+| `dtTileCache::update` | `TileCache.update` | benchmarked |
 | `dtTileCache::buildNavMeshTilesAt` | `TileCache.buildNavMeshTilesAt` | oracle-tested |
-| `dtTileCache::buildNavMeshTile` | `TileCache.buildNavMeshTile` | oracle-tested |
+| `dtTileCache::buildNavMeshTile` | `TileCache.buildNavMeshTile` | benchmarked |
 | `dtTileCache::calcTightTileBounds` | `TileCache.calcTightTileBounds` | oracle-tested |
 | `dtTileCache::getObstacleBounds` | `TileCache.getObstacleBounds` | oracle-tested |
 | `dtTileCache::encodeTileId` | `TileCache.encodeTileId` | oracle-tested |
@@ -586,5 +586,10 @@ design's tolerances.
 
 ## Next
 
-1. `zig build bench`, and its tables in the README.
-2. The performance pass, the skeptic and the fixes, by fresh agents.
+1. Benchmark rows for the parts the crowd and the queries use inside: the path corridor, the
+   proximity grid, the local boundary, the path queue, the query filter, the node pool, and
+   the tile cache builder's steps.
+2. The performance pass, by a fresh agent: the rows where the port is slower
+   (`closestHeightOnTriangle`, `navMeshDataSwapEndian`, `overlapPolyPoly2d`,
+   `NavMesh.addTile`, the tile cache rows) and the integer queries.
+3. The skeptic and the fixes, by fresh agents.
