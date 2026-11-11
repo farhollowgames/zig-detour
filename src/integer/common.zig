@@ -74,24 +74,64 @@ pub const Fraction = struct {
 /// `n / d` rounded to the nearest whole number, halves away from zero.
 /// `d` must be positive.
 pub inline fn divRound(n: i128, d: i128) i128 {
+    // Most operands fit 64 bits, which the processor divides in one
+    // instruction; a division of 128 bits is a library call.
+    if (std.math.cast(i64, n)) |narrow_n| {
+        if (std.math.cast(i64, d)) |narrow_d| return divRoundNarrow(narrow_n, narrow_d);
+    }
     const quotient = @divTrunc(n, d);
     const remainder = n - quotient * d;
     if (2 * @abs(remainder) < d) return quotient;
     return if (n < 0) quotient - 1 else quotient + 1;
 }
 
+inline fn divRoundNarrow(n: i64, d: i64) i64 {
+    const quotient = @divTrunc(n, d);
+    // Below `d`, so twice it still fits 64 bits unsigned.
+    const remainder = @abs(@rem(n, d));
+    if (2 * remainder < @as(u64, @intCast(d))) return quotient;
+    return if (n < 0) quotient - 1 else quotient + 1;
+}
+
+/// The root of the first value of each top byte's successor, for the top
+/// bytes 64 to 255 of a number of 64 bits: `ceil(sqrt((byte + 1) << 56))`
+/// in units of 2^16. It is at or above the root of every number with that
+/// top byte, and within 2^-7 of it.
+const root_estimates: [192]u32 = blk: {
+    @setEvalBranchQuota(10_000);
+    var estimates: [192]u32 = undefined;
+    for (&estimates, 64..) |*estimate, byte| {
+        // The rounded-up root of (byte + 1) * 2^24, by bisection.
+        const square: u64 = (byte + 1) << 24;
+        var low: u64 = 0;
+        var high: u64 = 1 << 16;
+        while (low < high) {
+            const middle = (low + high) / 2;
+            if (middle * middle < square) low = middle + 1 else high = middle;
+        }
+        estimate.* = low;
+    }
+    break :blk estimates;
+};
+
 /// The largest `r` with `r * r <= x`.
 pub fn isqrt(x: u64) u32 {
     if (x == 0) return 0;
-    // A power of two at or above the root, then Newton's steps downward:
-    // each lands at or above the root until one fails to go lower.
-    const bit_count: u7 = 64 - @as(u7, @clz(x));
-    var root: u64 = @as(u64, 1) << @intCast((bit_count + 1) / 2);
-    while (true) {
-        const next = (root + x / root) / 2;
-        if (next >= root) return @intCast(root);
-        root = next;
-    }
+    // Shifted by an even count so its top two bits are not both zero; the
+    // root of the shifted number, shifted back by half that count, is the
+    // root of `x` rounded down.
+    const shift: u6 = @intCast(@clz(x) & 0x3e);
+    const shifted = x << shift;
+    // An estimate within 2^-7 at or above the root, then two of Newton's
+    // steps, each squaring the error and staying at or above the root
+    // rounded down. The error is largest at the first number of a top byte,
+    // and there, worked out exactly for all 192, two steps leave less than
+    // one above the root: at most one above the root rounded down.
+    var root: u64 = @as(u64, root_estimates[(shifted >> 56) - 64]) << 16;
+    root = (root + shifted / root) / 2;
+    root = (root + shifted / root) / 2;
+    root -= @intFromBool(@as(u128, root) * root > shifted);
+    return @intCast(root >> (shift / 2));
 }
 
 /// The largest `r` with `r * r <= x`, for 128 bits.
@@ -192,8 +232,9 @@ inline fn lerpAxis(a: i32, b: i32, t: Fraction) i32 {
 }
 
 /// A direction of length one in Q16.16 from a difference of two positions;
-/// zero for the zero vector.
-pub fn normalize(v: [3]i32) [3]i32 {
+/// zero for the zero vector. Inline: a caller builds `v` just before, and a
+/// call would read it back from memory before the stores of its parts land.
+pub inline fn normalize(v: [3]i32) [3]i32 {
     const len_sqr = vlenSqr(v);
     if (len_sqr == 0) return .{ 0, 0, 0 };
     // The length in 1/65536 millimetre.
@@ -307,10 +348,12 @@ pub fn distancePointSegmentSqr2d(pt: [3]i32, p: [3]i32, q: [3]i32) PointSegmentD
     if (along >= len_sqr) return .{ .dist_sqr = vdist2dSqr(pt, q), .t = .one };
     // Beside the segment: the distance to its line.
     const across: i128 = pqx * dz - pqz * dx;
-    return .{
-        .dist_sqr = @intCast(@divTrunc(across * across, len_sqr)),
-        .t = .{ .num = along, .den = len_sqr },
-    };
+    // A square below 2^62 divides in 64 bits.
+    const dist_sqr: u64 = if (@abs(across) < 1 << 31)
+        @as(u64, @intCast(across * across)) / @as(u64, @intCast(len_sqr))
+    else
+        @intCast(@divTrunc(across * across, len_sqr));
+    return .{ .dist_sqr = dist_sqr, .t = .{ .num = along, .den = len_sqr } };
 }
 
 /// The height of triangle `a`, `b`, `c` under `p`, rounded to the nearest
@@ -556,6 +599,19 @@ test "isqrt is the exact root rounded down" {
     }
     try expectRoot(std.math.maxInt(u64));
     try testing.expectEqual(@as(u32, std.math.maxInt(u32)), isqrt(std.math.maxInt(u64)));
+
+    // The ends of every top byte of the estimate table, at every even shift,
+    // where the estimate is furthest from the root.
+    for (64..256) |byte| {
+        var even_shift: u7 = 0;
+        while (even_shift < 64) : (even_shift += 2) {
+            const first = @as(u64, byte) << 56 >> @intCast(even_shift);
+            const last = (@as(u64, byte) << 56 | ((1 << 56) - 1)) >> @intCast(even_shift);
+            try expectRoot(first);
+            try expectRoot(first -| 1);
+            try expectRoot(last);
+        }
+    }
 
     const seed: u64 = 0x5eed_1501;
     errdefer std.debug.print("seed {x}\n", .{seed});

@@ -181,7 +181,9 @@ pub const QueryFilter = struct {
                 next_poly,
             );
         }
-        return getCostByArea(
+        // Inlined: a call would read the positions back from memory just
+        // after the caller stored their parts, and wait for the stores.
+        return @call(.always_inline, getCostByArea, .{
             self,
             pa,
             pb,
@@ -194,7 +196,7 @@ pub const QueryFilter = struct {
             next_ref,
             next_tile,
             next_poly,
-        );
+        });
     }
 };
 
@@ -1068,6 +1070,9 @@ pub const NavMeshQuery = struct {
                 // A new node stands on the middle of the edge it was entered
                 // by. A link that names no shared edge leaves the node where
                 // it last stood.
+                // The position as a value: read back from the node just after
+                // its parts were stored, it would wait for the stores.
+                var neighbour_pos = neighbour_node.pos;
                 if (isUnvisited(neighbour_node)) {
                     _ = self.getEdgeMidPointResolved(
                         best_ref,
@@ -1076,14 +1081,15 @@ pub const NavMeshQuery = struct {
                         neighbour_ref,
                         neighbour_poly,
                         neighbour_tile,
-                        &neighbour_node.pos,
+                        &neighbour_pos,
                     );
+                    neighbour_node.pos = neighbour_pos;
                 }
 
                 // Costs add up to the largest `u64` and stay there.
                 const cur_cost = filter.getCost(
                     best_node.pos,
-                    neighbour_node.pos,
+                    neighbour_pos,
                     parent_ref,
                     parent_tile,
                     parent_poly,
@@ -1099,7 +1105,7 @@ pub const NavMeshQuery = struct {
                 if (neighbour_ref == end_ref) {
                     // The goal also costs the walk from its edge to the end.
                     const end_cost = filter.getCost(
-                        neighbour_node.pos,
+                        neighbour_pos,
                         end_pos,
                         best_ref,
                         best_tile,
@@ -1113,7 +1119,7 @@ pub const NavMeshQuery = struct {
                     );
                     cost = cost +| end_cost;
                 } else {
-                    heuristic = common.vdist(neighbour_node.pos, end_pos) * h_scale / 1000;
+                    heuristic = common.vdist(neighbour_pos, end_pos) * h_scale / 1000;
                 }
 
                 const total = cost +| heuristic;
@@ -1397,6 +1403,9 @@ pub const NavMeshQuery = struct {
                 // A new node stands on the middle of the edge it was entered
                 // by. A link that names no shared edge leaves the node where
                 // it last stood.
+                // The position as a value: read back from the node just after
+                // its parts were stored, it would wait for the stores.
+                var neighbour_pos = neighbour_node.pos;
                 if (isUnvisited(neighbour_node)) {
                     _ = self.getEdgeMidPointResolved(
                         best_ref,
@@ -1405,8 +1414,9 @@ pub const NavMeshQuery = struct {
                         neighbour_ref,
                         neighbour_poly,
                         neighbour_tile,
-                        &neighbour_node.pos,
+                        &neighbour_pos,
                     );
+                    neighbour_node.pos = neighbour_pos;
                 }
 
                 var found_short_cut = false;
@@ -1417,7 +1427,7 @@ pub const NavMeshQuery = struct {
                     _ = self.raycast(
                         parent_ref,
                         parent_node.?.pos,
-                        neighbour_node.pos,
+                        neighbour_pos,
                         filter,
                         .{ .use_costs = true },
                         &ray_hit,
@@ -1435,7 +1445,7 @@ pub const NavMeshQuery = struct {
                 } else {
                     const cur_cost = filter.getCost(
                         best_node.pos,
-                        neighbour_node.pos,
+                        neighbour_pos,
                         parent_ref,
                         parent_tile,
                         parent_poly,
@@ -1453,7 +1463,7 @@ pub const NavMeshQuery = struct {
                 if (neighbour_ref == self.query.end_ref) {
                     // The goal also costs the walk from its edge to the end.
                     const end_cost = filter.getCost(
-                        neighbour_node.pos,
+                        neighbour_pos,
                         self.query.end_pos,
                         best_ref,
                         best_tile,
@@ -1468,7 +1478,7 @@ pub const NavMeshQuery = struct {
                     cost = cost +| end_cost;
                 } else {
                     heuristic =
-                        common.vdist(neighbour_node.pos, self.query.end_pos) * h_scale / 1000;
+                        common.vdist(neighbour_pos, self.query.end_pos) * h_scale / 1000;
                 }
 
                 const total = cost +| heuristic;
@@ -3605,6 +3615,9 @@ pub const NavMeshQuery = struct {
 
                 // A node seen for the first time stands at the portal's middle.
                 // Without a portal it keeps the position the node last held.
+                // The position as a value: read back from the node just after
+                // its parts were stored, it would wait for the stores.
+                var neighbour_pos = neighbour_node.pos;
                 if (neighbour_node.bits.flags == NodeFlags{}) {
                     _ = self.getEdgeMidPointResolved(
                         best_ref,
@@ -3613,11 +3626,12 @@ pub const NavMeshQuery = struct {
                         neighbour_ref,
                         neighbour_poly,
                         neighbour_tile,
-                        &neighbour_node.pos,
+                        &neighbour_pos,
                     );
+                    neighbour_node.pos = neighbour_pos;
                 }
 
-                const total = best_node.total +| common.vdist(best_node.pos, neighbour_node.pos);
+                const total = best_node.total +| common.vdist(best_node.pos, neighbour_pos);
 
                 // The node is already in the open list and the new way is no
                 // better: skip.

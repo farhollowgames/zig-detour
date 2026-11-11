@@ -168,7 +168,9 @@ pub const QueryFilter = struct {
                 next_poly,
             );
         }
-        return getCostByArea(
+        // Inlined: a call would read the positions back from memory just
+        // after the caller stored their parts, and wait for the stores.
+        return @call(.always_inline, getCostByArea, .{
             self,
             pa,
             pb,
@@ -181,7 +183,7 @@ pub const QueryFilter = struct {
             next_ref,
             next_tile,
             next_poly,
-        );
+        });
     }
 };
 
