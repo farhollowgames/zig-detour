@@ -573,16 +573,18 @@ design's tolerances.
 | piece | Zig | state |
 | --- | --- | --- |
 | design: units, scales, overflow bounds, tolerances | `doc/integer-design.md` | written |
-| vector and geometry helpers | `src/integer/common.zig` | built |
-| navigation mesh, tile conversion from the float format | `src/integer/nav_mesh.zig`, `src/integer/convert.zig` | written, not yet built |
-| node pool and queue | `src/integer/node.zig` | written, not yet built |
-| queries | `src/integer/nav_mesh_query.zig` | written, not yet built |
-| checked against the float port within the stated tolerances | | not started |
-| exact self-determinism, on 1, 2 and N threads | | not started |
+| vector and geometry helpers | `src/integer/common.zig` | built, checked through the queries |
+| navigation mesh | `src/integer/nav_mesh.zig` | built, checked |
+| tile conversion from the float format | `src/integer/convert.zig` | built, checked |
+| node pool and queue | `src/integer/node.zig` | built, checked through the searches |
+| queries, every one of `NavMeshQuery` | `src/integer/nav_mesh_query.zig` | built, checked |
+| checked against the float port within the stated tolerances | `test/integer_test.zig`, `test/integer_hand_test.zig` | done: 4 levels, about 1,200 seeded cases per query, hand-made meshes |
+| no overflow across the whole coordinate range | `test/integer_hand_test.zig` | done |
+| no float in the variant's source | `test/integer_hand_test.zig` | done |
+| exact self-determinism: twice, on 1, 2 and N threads, a hash kept in the test | `test/integer_hand_test.zig` | done, the same hash in Debug, ReleaseSafe and ReleaseFast |
 | crowd and tile cache over integers | | left out, see `doc/integer-design.md` |
 
 ## Next
 
-1. The integer navigation mesh and queries built, their tolerance tests against the float
-   port and their determinism tests.
-2. `zig build bench`, and its tables in the README.
+1. `zig build bench`, and its tables in the README.
+2. The performance pass, the skeptic and the fixes, by fresh agents.

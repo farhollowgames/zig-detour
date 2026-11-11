@@ -10,7 +10,7 @@ The float port stays the exact translation of the original, checked against it
 byte for byte. The integer variant is checked against the float port: same
 polygons, same statuses, positions within the tolerances below, over the demo
 meshes and seeded random meshes. This file is the design those checks hold the
-code to. It was written before the code.
+code to.
 
 ## What is in it
 
@@ -153,15 +153,18 @@ length zero. The converter keeps the polygon as it is: every query treats a
 zero-length edge the way the float port treats one (it has no inside and no
 crossing), and the checks against the float port cover such meshes.
 
-**The tree.** A tree node's box is recomputed from the integer geometry: per
-polygon the box of its vertices and of its detail vertices, relative to
-`bounds_min`, in cells of `bv_cell_size`, the minimum rounded down and the
-maximum rounded up, clamped to 0..65535. Inner nodes are the union of their
-children. The node order and the escape indices are the float tile's. The
-original truncates both ends and relies on the query widening its box by a
-cell; the variant keeps that widening too, so its boxes are never smaller
-than the original's except where a float product lands a hair on the other
-side of a cell border.
+**The tree.** A leaf's box is the union of the float tile's box for its
+polygon and the cells, relative to `bounds_min` in cells of `bv_cell_size`
+and both rounded down, that hold the lowest and the highest of the polygon's
+vertices and detail vertices, clamped to 0..65535. Inner nodes are the union
+of their children. The node order and the escape indices are the float
+tile's. The float box has to stay: the original builds it from the detail
+heights of the polygon's corners, which a tile does not keep (it keeps the
+coarser polygon heights), so a box made from the tile alone can come out a
+cell lower or higher than the original's. The integer geometry has to be in
+it too, so that a query finds a polygon wherever its surface reaches the
+query box. A box is therefore never smaller than the original's, and larger
+where the polygon's corners stand outside the detail heights.
 
 **Query boxes.** A query's box is clamped to the tile's bounds, made relative
 to `bounds_min` and divided by `bv_cell_size` with `@divFloor`; then the
@@ -356,14 +359,22 @@ interface, beyond the units:
 11. **Degenerate input has a defined result** where the float port gives
     NaN: the zero normal for a zero vector, `t = 0` on a segment of no
     length, the edge's first height on an edge of no length.
+12. **Tree boxes hold the tile's own geometry**, so `queryPolygons` and the
+    searches built on it can find a polygon whose surface reaches the query
+    box where the original's box, built from detail heights, did not.
+13. **The shorter path where corridor vertices meet on one line.** Exact
+    side tests take the straight way where the float funnel, misled by
+    rounding, can turn at the far end of a portal.
 
 ## Checks against the float port
 
 The tests run both on the same meshes: the float tile through the float
 port, its conversion through the variant, with the same positions (whole
 millimetres, handed to the float port as metres). Meshes are RecastDemo's
-levels and seeded random meshes baked on a grid of whole millimetres within
-1 km of the origin, where `f32` still resolves a tenth of a millimetre.
+levels and seeded random meshes baked on a grid of whole millimetres, all
+within 1 km of the origin, where `f32` still resolves a tenth of a
+millimetre: `undulating.obj`, which lies about 5 km out, is moved 5 km
+toward the origin first.
 
 **Tolerance.** `T = 2 mm` per axis for a position: half a millimetre for the
 converter's rounding, half for the variant's, and one for the float port's
@@ -379,27 +390,30 @@ are stable, so it cannot pass by skipping.
 
 | query | what must hold on a stable case |
 | --- | --- |
-| converter | every vertex within 0.5 mm of the float one; links the same, limits within one step |
-| `findNearestPoly` | same polygon and over-flag, point within `T` |
-| `queryPolygons` | same set, but for polygons whose box is within one tree cell of the query box's border |
+| converter | every vertex within 0.5 mm of the float one, an off-mesh connection's ends within `T` as the nearest points they are snapped to; links the same, limits within one step; every tree box holds the float box and the integer geometry |
+| `findNearestPoly` | same polygon and over-flag, point within `T`; a different polygon only where the two trees' searches differ at the box's border, or where two polygons lie equally near within `T`, each at most 5% of the stable cases |
+| `queryPolygons` | same set, but for polygons whose integer tree box is within two tree cells of the query box's border (the query box is widened by up to two cells on either side) |
 | `closestPointOnPoly`, `closestPointOnPolyBoundary`, `getPolyHeight` | same status and over-flag, point within `T`, height within `2 T` |
 | `findPath`, sliced | same status; the same corridor, or one whose cost, summed by one evaluator on both, is within 0.1% plus 1 mm per polygon; at least 90% the same corridor |
-| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other; same flags and polygons at the corners both have |
-| `raycast` | same polygons crossed and same hit edge; hit point within `T`; normal within `2^-10`; cost within 0.1% plus 1 mm per polygon |
+| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other; same flags and polygons at the corners both have, where a corner at a vertex several portals share may name either polygon that holds it; with the crossing options both paths are held against the float corners alone, since the float port extends a crossing past its portal; where vertices of the corridor meet on one line the float funnel can turn on the far side of a portal and take a longer way, and the integer path must then pass within `T` of every portal and be no longer (at most 2% of the stable cases) |
+| `raycast` | same polygons crossed and same hit edge; hit point within `T` over the sine of the angle between ray and wall (a wall moved by `T` moves the hit along the ray by that much); normal within `2^-10`; cost within 0.1% plus `1 + 2 T` mm per polygon crossed plus `T` |
 | `moveAlongSurface` | same polygons visited, result within `T` |
-| `findPolysAroundCircle`, `findPolysAroundShape`, `findLocalNeighbourhood` | same polygons and parents; costs within 0.1% plus 1 mm per polygon |
-| `getPolyWallSegments` | same count and references; ends within `T`, or within `T` plus 1/255 of the edge at a link whose limits differ |
-| `findDistanceToWall` | distance within `T`; wall point within `T` unless two walls are equally near; normal within `2^-8` when the distance is above 100 mm |
+| `findPolysAroundCircle`, `findPolysAroundShape`, `findLocalNeighbourhood` | same polygons and parents; costs within 0.1% plus, per polygon of depth, `1 + 2 T` mm times the dearest area cost, plus `T` |
+| `getPolyWallSegments` | same count and references; ends within `T` plus 1/255 of the polygon's longest edge |
+| `findDistanceToWall` | distance within `T`; wall point within `T` unless two walls are equally near; normal within `max(2^-8, 2 T / distance)` when the distance is above 100 mm |
 | random points | the point lies on the returned polygon within 1 mm, the polygon passes the filter, and over many draws polygons are picked in proportion to area |
 
-Every row is a seeded test of at least a thousand cases that prints its seed
-on failure, plus hand-made cases: the empty mesh, one polygon, zero-length
-edges, a point exactly on an edge or vertex, and geometry at the coordinate
-bound.
+Every row is a seeded test of at least a thousand cases that prints the
+level and the case on failure (the seeds are constants of the tests), plus
+hand-made cases on both sides: a mesh with no tile, one polygon with points
+inside, exactly on an edge, at a vertex and outside, and two polygons joined
+along an edge that the conversion makes a point.
 
-**Overflow.** A test runs every query on meshes with vertices at the corners
-of the coordinate bound, with rays and radii across the whole range, built
-with safety checks on, so an overflow anywhere would trap.
+**Overflow.** A test runs every query on a level of four tiles that spans
+the whole coordinate range, its vertices within a millimetre of the bound,
+from the corners of the bound and seeded points, with radii and boxes up to
+the whole range, built with safety checks on, so an overflow anywhere would
+trap. One millimetre past the bound is refused.
 
 ## Determinism
 
@@ -411,4 +425,6 @@ with safety checks on, so an overflow anywhere would trap.
   `NavMeshQuery` over one shared mesh, gives the same bytes.
 - Across builds and machines: the workload's output is hashed and compared
   with a value kept in the test, which must hold in every optimisation mode
-  and on every target the tests run on.
+  and on every target the tests run on. The workload's level is made by the
+  float port's own builder, not by Recast, so the hash depends on no C or
+  C++ compiler; it holds in Debug, ReleaseSafe and ReleaseFast.

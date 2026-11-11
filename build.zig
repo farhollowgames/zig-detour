@@ -100,6 +100,7 @@ pub fn build(b: *std.Build) void {
         );
         differential.root_module.linkLibrary(recast);
         addMeshes(b, upstream, differential.root_module);
+        addIntegerSources(b, differential.root_module);
         test_step.dependOn(&b.addRunArtifact(differential).step);
     }
 }
@@ -279,6 +280,22 @@ fn recastLibrary(
         .flags = &cpp_flags,
     });
     return lib;
+}
+
+/// The integer variant's sources, which a test reads to find no float in
+/// them, by the names it embeds them under.
+const integer_sources = [_][2][]const u8{
+    .{ "integer_source_root", "src/integer.zig" },
+    .{ "integer_source_common", "src/integer/common.zig" },
+    .{ "integer_source_nav_mesh", "src/integer/nav_mesh.zig" },
+    .{ "integer_source_node", "src/integer/node.zig" },
+    .{ "integer_source_nav_mesh_query", "src/integer/nav_mesh_query.zig" },
+};
+
+fn addIntegerSources(b: *std.Build, module: *std.Build.Module) void {
+    for (integer_sources) |source| {
+        module.addAnonymousImport(source[0], .{ .root_source_file = b.path(source[1]) });
+    }
 }
 
 const mesh_names = [_][]const u8{ "dungeon", "nav_test", "undulating" };

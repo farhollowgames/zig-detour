@@ -19,8 +19,9 @@ it uses.
 **The port is in progress.** Every part is translated, and the tests compare
 all of it with the original: the navigation mesh, the tile builder, the
 queries and the node pool, the crowd and its parts, the tile cache and its
-builder. An integer version of the navigation mesh and its queries, and
-benchmarks against the original, come next. [`STATUS.md`](STATUS.md) lists
+builder. An integer version of the navigation mesh and its queries is
+written and checked against the float port. Benchmarks against the original
+come next. [`STATUS.md`](STATUS.md) lists
 every function, option and mode of the original with its state, and what
 comes next.
 [`doc/parity.md`](doc/parity.md) lists every place where the port differs
@@ -117,6 +118,31 @@ is `NavMeshQuery.findPath`), with Zig's conventions:
 [`STATUS.md`](STATUS.md) maps every function and type of the original to its
 counterpart.
 
+### Integer queries
+
+`detour.integer` is the navigation mesh and every query of `NavMeshQuery` on
+whole millimetres, with no floating-point operation, so a call gives the same
+bytes on every machine, compiler and optimisation mode: for a server whose
+answers clients must be able to repeat. Its names and calls are the float
+port's, with `[3]i32` positions; costs are whole numbers in 1/256 mm, and a
+ray's hit is an exact fraction. A tile is baked as usual and converted:
+
+```zig
+// Metres to millimetres: a scale of 1000.
+const data = try detour.integer.tileFromFloat(gpa, float_tile, 1000);
+var nav: detour.integer.NavMesh = .empty;
+if (nav.initSingleTile(gpa, data, .{ .free_data = true }).failed) {
+    gpa.free(data);
+    return error.BadTile;
+}
+defer nav.deinit();
+```
+
+Coordinates lie within 2^29 mm (about 536 km) of the origin. The crowd and
+the tile cache stay float only. [`doc/integer-design.md`](doc/integer-design.md)
+gives the units, the overflow bounds, what a caller sees differently, and the
+tolerances the tests hold it to.
+
 ### Build switches
 
 The original's three compile-time switches are build options:
@@ -145,6 +171,19 @@ damaged at random are refused by the port where the original would read or
 write outside them, and taken as the original takes them otherwise.
 
 The tests run twice: with every build switch off, and with every one on.
+
+The integer queries cannot match the original byte for byte, so the tests
+hold them to the float port within the tolerances written in
+[`doc/integer-design.md`](doc/integer-design.md) (2 mm for a position), on
+four levels and about 1,200 seeded cases per query, comparing only the cases
+where the float port's answer does not change when the input moves by a
+millimetre. Hand-made meshes cover the empty mesh, a single polygon, points
+exactly on an edge or a vertex, and an edge that rounds to nothing. A level
+spanning the whole coordinate range runs every query with overflow checks
+on. A fixed workload gives the same bytes twice, on 1, 2 and many threads,
+and a hash kept in the test, the same in Debug, ReleaseSafe and ReleaseFast.
+A test reads the integer source and finds no float type, float builtin or
+float literal in it.
 
 Both sides are built with fused multiply-add off, so float steps round as
 written. Where the original's behaviour is undefined (out-of-range float
