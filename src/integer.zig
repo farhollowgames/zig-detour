@@ -20,6 +20,7 @@ pub const PolyRef = nav_mesh.PolyRef;
 pub const TileRef = nav_mesh.TileRef;
 pub const NavMesh = nav_mesh.NavMesh;
 pub const NavMeshParams = nav_mesh.NavMeshParams;
+pub const LinkOrder = nav_mesh.LinkOrder;
 pub const MeshTile = nav_mesh.MeshTile;
 pub const MeshHeader = nav_mesh.MeshHeader;
 

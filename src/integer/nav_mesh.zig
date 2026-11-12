@@ -322,6 +322,27 @@ pub const NavMeshParams = extern struct {
     /// How many polygons a tile can hold; bounds the polygon bits of a
     /// reference.
     poly_count_max: i32,
+    /// The order of each polygon's links, which decides the order a search
+    /// meets a polygon's neighbours in.
+    link_order: LinkOrder = .added,
+};
+
+/// The order of each polygon's list of links.
+pub const LinkOrder = enum(u8) {
+    /// The original's: each new link goes to the front of its polygon's
+    /// list, so the order follows the order tiles were added and removed.
+    added,
+    /// The order the original gives a mesh whose tiles are all added in key
+    /// order (by grid y, then x, then layer), whatever order the tiles came
+    /// and went in. A mesh that had tiles removed and added again then links
+    /// every polygon as one opened afresh from the same tiles does, so its
+    /// queries answer the same. Each off-mesh connection's polygon starts
+    /// from the connection's own end points when its tile is linked, as a
+    /// tile fresh from the builder does. Tiles added in key order link as
+    /// with `added`; a tile added before a tile of a later key within two
+    /// cells of it, and every removal, link the tiles of its own and the
+    /// eight cells around it again.
+    key,
 };
 
 /// A tile's place in the tile grid.
@@ -430,6 +451,30 @@ fn calcSlabEndPoints(va: [3]i32, vb: [3]i32, side: i32) Slab {
 }
 
 /// The lookup bucket of the tiles at grid position `x`, `y`.
+/// Whether tile `a` comes before tile `b` in key order: by grid y, then x,
+/// then layer.
+fn keyBefore(a: *const MeshHeader, b: *const MeshHeader) bool {
+    if (a.y != b.y) return a.y < b.y;
+    if (a.x != b.x) return a.x < b.x;
+    return a.layer < b.layer;
+}
+
+fn tileKeyBefore(_: void, a: *MeshTile, b: *MeshTile) bool {
+    return keyBefore(a.header.?, b.header.?);
+}
+
+/// The side, 0..7 counter-clockwise from +x, of the cell `dx`, `dy` away
+/// from a cell next to it.
+fn sideToward(dx: i32, dy: i32) i32 {
+    if (dx > 0) return if (dy > 0) 1 else if (dy < 0) 7 else 0;
+    if (dx < 0) return if (dy > 0) 3 else if (dy < 0) 5 else 4;
+    return if (dy > 0) 2 else 6;
+}
+
+/// Which links `NavMesh.connectExtOffMeshLinks` makes: those of the
+/// connections' own polygons, those of the polygons they land on, or both.
+const OffMeshHalf = enum { target, tile, both };
+
 inline fn computeTileHash(x: i32, y: i32, mask: i32) usize {
     const h1: u32 = 0x8da6b343;
     const h2: u32 = 0xd8163841;
@@ -940,8 +985,21 @@ pub const NavMesh = struct {
         const tile = free_tile orelse return out_of_memory;
 
         const h = computeTileHash(header.x, header.y, self.tile_lookup_mask);
-        tile.next = self.position_lookup[h];
-        self.position_lookup[h] = tile;
+        if (self.params.link_order == .key) {
+            // Each bucket holds its tiles from the latest key to the
+            // earliest, as adding them in key order leaves it.
+            var prev: ?*MeshTile = null;
+            var cur = self.position_lookup[h];
+            while (cur) |c| : (cur = c.next) {
+                if (keyBefore(c.header.?, header)) break;
+                prev = c;
+            }
+            tile.next = cur;
+            if (prev) |p| p.next = tile else self.position_lookup[h] = tile;
+        } else {
+            tile.next = self.position_lookup[h];
+            self.position_lookup[h] = tile;
+        }
 
         tile.verts = verts;
         tile.polys = polys;
@@ -952,25 +1010,17 @@ pub const NavMesh = struct {
         tile.bv_tree = bv_tree;
         tile.off_mesh_connections = off_mesh_connections;
 
-        // Every link starts on the free list.
-        if (link_count_max == 0) {
-            tile.links_free_list = null_link;
-        } else {
-            tile.links_free_list = 0;
-            tile.links[link_count_max - 1].next = null_link;
-            for (0..link_count_max - 1) |i| tile.links[i].next = @intCast(i + 1);
-        }
-
         tile.header = header;
         tile.data = data;
         tile.flags = flags;
 
-        self.connectIntLinks(tile);
+        if (self.params.link_order == .key and !self.latestAround(tile)) {
+            self.relinkAround(header.x, header.y);
+            if (result) |r| r.* = self.getTileRef(tile);
+            return .success;
+        }
 
-        // Base the tile's off-mesh connections on their start polygons, and
-        // land the ones that end inside the tile.
-        self.baseOffMeshLinks(tile);
-        self.connectExtOffMeshLinks(tile, tile, -1);
+        self.linkWithin(tile);
 
         const neighbour_count_max = 32;
         var neighbours: [neighbour_count_max]*MeshTile = undefined;
@@ -982,8 +1032,8 @@ pub const NavMesh = struct {
 
             self.connectExtLinks(tile, neighbour, -1);
             self.connectExtLinks(neighbour, tile, -1);
-            self.connectExtOffMeshLinks(tile, neighbour, -1);
-            self.connectExtOffMeshLinks(neighbour, tile, -1);
+            self.connectExtOffMeshLinks(tile, neighbour, -1, .both);
+            self.connectExtOffMeshLinks(neighbour, tile, -1, .both);
         }
 
         // Connect with the tiles of the eight cells around.
@@ -991,10 +1041,11 @@ pub const NavMesh = struct {
         while (side < 8) : (side += 1) {
             neighbour_count = self.getNeighbourTilesAt(header.x, header.y, side, &neighbours);
             for (neighbours[0..neighbour_count]) |neighbour| {
+                const opposite = common.oppositeTile(side);
                 self.connectExtLinks(tile, neighbour, side);
-                self.connectExtLinks(neighbour, tile, common.oppositeTile(side));
-                self.connectExtOffMeshLinks(tile, neighbour, side);
-                self.connectExtOffMeshLinks(neighbour, tile, common.oppositeTile(side));
+                self.connectExtLinks(neighbour, tile, opposite);
+                self.connectExtOffMeshLinks(tile, neighbour, side, .both);
+                self.connectExtOffMeshLinks(neighbour, tile, opposite, .both);
             }
         }
 
@@ -1018,6 +1069,9 @@ pub const NavMesh = struct {
         if (tile.salt != tile_salt) return invalid_param;
         // A reference to an unused entry, which keeps its salt, names no tile.
         const header = tile.header orelse return invalid_param;
+        // The blob may be freed below.
+        const header_x = header.x;
+        const header_y = header.y;
 
         // Remove the tile from the position lookup.
         const h = computeTileHash(header.x, header.y, self.tile_lookup_mask);
@@ -1067,7 +1121,140 @@ pub const NavMesh = struct {
         tile.next = self.next_free;
         self.next_free = tile;
 
+        if (self.params.link_order == .key) self.relinkAround(header_x, header_y);
+
         return .success;
+    }
+
+    /// Whether `tile`, just added, has a later key than every other tile of
+    /// the 5 by 5 cells around it. Linking it as the original does then
+    /// leaves it and its neighbours as adding every tile in key order would:
+    /// its neighbours' lists, and theirs, end with it.
+    fn latestAround(self: *const NavMesh, tile: *const MeshTile) bool {
+        const header = tile.header.?;
+        var dy: i32 = -2;
+        while (dy <= 2) : (dy += 1) {
+            var dx: i32 = -2;
+            while (dx <= 2) : (dx += 1) {
+                var cur = self.firstTileAt(header.x +% dx, header.y +% dy);
+                while (cur) |c| : (cur = c.next) {
+                    const other = c.header orelse continue;
+                    if (c == tile) continue;
+                    if (other.x != header.x +% dx or other.y != header.y +% dy) continue;
+                    if (keyBefore(header, other)) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// Links again, as adding every tile in key order would, each tile of the
+    /// cell `x`, `y` and the eight cells around it: first each one's own
+    /// links, then each one's links across its borders. A tile's own links
+    /// decide which of its off-mesh connections start anywhere, which its
+    /// neighbours' links read, so all of them come first.
+    fn relinkAround(self: *NavMesh, x: i32, y: i32) void {
+        // At most 32 layers a cell, as the original's neighbour lists hold.
+        var tiles: [9 * 32]*MeshTile = undefined;
+        var count: usize = 0;
+        var dy: i32 = -1;
+        while (dy <= 1) : (dy += 1) {
+            var dx: i32 = -1;
+            while (dx <= 1) : (dx += 1) {
+                count += self.getTilesAtMutable(x +% dx, y +% dy, tiles[count..][0..32]);
+            }
+        }
+        for (tiles[0..count]) |tile| self.linkWithin(tile);
+        for (tiles[0..count]) |tile| self.linkAcross(tile);
+    }
+
+    /// Empties `tile`'s links and links it within itself: its polygons to
+    /// each other, its off-mesh connections to the polygons they start on,
+    /// and those that end inside it to the polygons they land on. With the
+    /// key order, each connection's polygon first takes the connection's own
+    /// end points back.
+    fn linkWithin(self: *const NavMesh, tile: *MeshTile) void {
+        // Every link starts on the free list.
+        const link_count_max = tile.links.len;
+        if (link_count_max == 0) {
+            tile.links_free_list = null_link;
+        } else {
+            tile.links_free_list = 0;
+            tile.links[link_count_max - 1].next = null_link;
+            for (0..link_count_max - 1) |i| tile.links[i].next = @intCast(i + 1);
+        }
+
+        if (self.params.link_order == .key) {
+            for (tile.off_mesh_connections) |*connection| {
+                const poly = &tile.polys[connection.poly];
+                tile.verts[poly.verts[0]] = connection.pos[0];
+                tile.verts[poly.verts[1]] = connection.pos[1];
+            }
+        }
+
+        self.connectIntLinks(tile);
+
+        // Base the tile's off-mesh connections on their start polygons, and
+        // land the ones that end inside the tile.
+        self.baseOffMeshLinks(tile);
+        self.connectExtOffMeshLinks(tile, tile, -1, .both);
+    }
+
+    /// Links `tile`'s polygons and off-mesh connections to the tiles around
+    /// it in the order adding every tile in key order gives: the earlier
+    /// tiles as adding `tile` meets them, its other layers and then its
+    /// sides 0 to 7, each cell's tiles from the latest key; then the later
+    /// tiles in key order, each as its own adding meets `tile`. Writes only
+    /// `tile`'s links and its connections' end points.
+    fn linkAcross(self: *const NavMesh, tile: *MeshTile) void {
+        const header = tile.header.?;
+        var later: [9 * 32]*MeshTile = undefined;
+        var later_count: usize = 0;
+        var neighbours: [32]*MeshTile = undefined;
+
+        const layer_count = self.getTilesAtMutable(header.x, header.y, &neighbours);
+        for (neighbours[0..layer_count]) |neighbour| {
+            if (neighbour == tile) continue;
+            if (!keyBefore(neighbour.header.?, header)) {
+                later[later_count] = neighbour;
+                later_count += 1;
+                continue;
+            }
+            self.connectExtLinks(tile, neighbour, -1);
+            self.connectExtOffMeshLinks(tile, neighbour, -1, .tile);
+            self.connectExtOffMeshLinks(neighbour, tile, -1, .target);
+        }
+        var side: i32 = 0;
+        while (side < 8) : (side += 1) {
+            const n = self.getNeighbourTilesAt(header.x, header.y, side, &neighbours);
+            for (neighbours[0..n]) |neighbour| {
+                if (!keyBefore(neighbour.header.?, header)) {
+                    later[later_count] = neighbour;
+                    later_count += 1;
+                    continue;
+                }
+                self.connectExtLinks(tile, neighbour, side);
+                self.connectExtOffMeshLinks(tile, neighbour, side, .tile);
+                self.connectExtOffMeshLinks(neighbour, tile, common.oppositeTile(side), .target);
+            }
+        }
+
+        std.mem.sort(*MeshTile, later[0..later_count], {}, tileKeyBefore);
+        for (later[0..later_count]) |neighbour| {
+            const other = neighbour.header.?;
+            if (other.x == header.x and other.y == header.y) {
+                self.connectExtLinks(tile, neighbour, -1);
+                self.connectExtOffMeshLinks(neighbour, tile, -1, .target);
+                self.connectExtOffMeshLinks(tile, neighbour, -1, .tile);
+                continue;
+            }
+            // The side `neighbour` lies on seen from `tile`; `tile` lies on
+            // the opposite one seen from `neighbour`.
+            const toward = sideToward(other.x -% header.x, other.y -% header.y);
+            self.connectExtLinks(tile, neighbour, toward);
+            self.connectExtOffMeshLinks(neighbour, tile, common.oppositeTile(toward), .target);
+            self.connectExtOffMeshLinks(tile, neighbour, toward, .tile);
+        }
     }
 
     /// The grid cell that holds `pos`: per axis the offset from the origin
@@ -1557,12 +1744,16 @@ pub const NavMesh = struct {
 
     /// Lands the off-mesh connections of `target` that leave it through the
     /// side facing `tile` on `tile`'s polygons; for -1, the ones that stay
-    /// inside their tile.
+    /// inside their tile. `half` says whose links it makes: `target`'s, from
+    /// each connection's polygon to where it lands, which also moves the
+    /// connection's end point there; `tile`'s, back to the connection from
+    /// where a two-way one lands; or both, connection by connection.
     fn connectExtOffMeshLinks(
         self: *const NavMesh,
         tile: *MeshTile,
         target: *MeshTile,
         side: i32,
+        half: OffMeshHalf,
     ) void {
         // We are interested on links which land from target tile to this tile.
         const opposite_side: u8 = if (side == -1) 0xff else @intCast(common.oppositeTile(side));
@@ -1586,11 +1777,13 @@ pub const NavMesh = struct {
             // findNearestPoly may return too optimistic results, further check to make sure.
             const radius_wide: u64 = @intCast(radius);
             if (common.vdist2dSqr(nearest_pt, p) > radius_wide * radius_wide) continue;
-            // Make sure the location is on current mesh.
-            target.verts[target_poly.verts[1]] = nearest_pt;
+            if (half != .tile) {
+                // Make sure the location is on current mesh.
+                target.verts[target_poly.verts[1]] = nearest_pt;
+            }
 
             // Link off-mesh connection to target poly.
-            const index = allocLink(target);
+            const index = if (half == .tile) null_link else allocLink(target);
             if (index != null_link) {
                 const link = &target.links[index];
                 link.ref = ref;
@@ -1604,7 +1797,8 @@ pub const NavMesh = struct {
             }
 
             // Link target poly to off-mesh connection.
-            if ((target_connection.flags & off_mesh_connection_bidirectional) != 0) {
+            const two_way = (target_connection.flags & off_mesh_connection_bidirectional) != 0;
+            if (half != .target and two_way) {
                 const land_index = allocLink(tile);
                 if (land_index != null_link) {
                     const land_poly_index: u16 = @truncate(self.decodePolyIdPoly(ref));

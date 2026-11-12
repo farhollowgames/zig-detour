@@ -309,6 +309,50 @@ Off-mesh connections are linked as in the original: the end point is snapped
 to the nearest polygon within the connection's radius, by the same nearest
 search as `findNearestPoly`, and the radius test is on exact squares.
 
+### Link order
+
+The original puts each new link at the front of its polygon's list, and a
+search meets a polygon's neighbours in that order, so where two ways tie
+the order picks the corridor. The order follows the history of the mesh: a
+tile removed and added again leaves its neighbours' lists, and the links
+their free lists hand out, otherwise than a mesh opened afresh from the same
+tiles, and a server that restores its mesh from saved tiles could then find
+other paths than the one that ran on.
+
+`NavMeshParams.link_order` chooses:
+
+| order | each polygon's links |
+| --- | --- |
+| `added` (the default) | as the original makes them, in the order tiles came and went |
+| `key` | as the original makes them when every tile present is added in key order (grid y, then x, then layer), whatever order the tiles came and went in |
+
+With `key`, a tile added after every tile within two cells of it in key
+order links as with `added`, which is then already that order: opening a
+mesh in key order costs nothing more, and gives the original's links byte
+for byte. Any other add, and every removal, empties the links of the tiles
+in its own cell and the eight around it and makes them again, each tile's
+own links first (which off-mesh connections start anywhere, read by the
+others), then each tile's links across its borders, replaying the order a
+key-order opening would make them in: the earlier tiles as adding the tile
+meets them, then the later tiles in key order. Each lookup bucket keeps its
+tiles from the latest key to the earliest, as a key-order opening leaves it,
+so a cell's layers are met in one order too. An off-mesh connection's
+polygon takes the connection's own end points back before its tile links
+again, as a tile fresh from the builder holds them, so an end snapped to a
+tile since removed does not stay there.
+
+What still follows the history is which tile entry a tile takes, and so the
+references: `findRandomPoint`, which walks the tiles by entry, can draw
+otherwise. Every other query names polygons only by reference equality.
+
+The tests (`test/link_order_test.zig`) open each level in key order with
+both orders and compare every tile blob byte for byte and a workload of
+queries; open it in a shuffled order, remove and add tiles at random, and
+remove each tile in turn, comparing after each step every polygon's list,
+the free links and the vertices, and the workload's answers, with polygons
+named by tile and index, against a mesh opened afresh in key order; and show
+that with `added` a tile removed and added again links otherwise.
+
 ## Queries
 
 Every query has the float port's steps in the float port's order; what is

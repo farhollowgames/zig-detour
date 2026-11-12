@@ -27,6 +27,7 @@ comptime {
     _ = @import("path_queue_test.zig");
     _ = @import("integer_test.zig");
     _ = @import("integer_hand_test.zig");
+    _ = @import("link_order_test.zig");
 }
 
 /// Takes the address of every public function under `T`, so the compiler
