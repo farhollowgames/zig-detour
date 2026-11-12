@@ -31,10 +31,9 @@ This port is not affiliated with or reviewed by the original authors. Its code w
 ## Install
 
 ```sh
-zig fetch --save git+https://github.com/farhollowgames/zig-detour
+zig fetch --save git+https://github.com/farhollowgames/zig-detour#v0.1.0
 ```
 
-No version is tagged yet, so this takes `main`; add `#<tag>` once one is.
 Then, in `build.zig`:
 
 ```zig
@@ -150,21 +149,20 @@ the tolerances its design states. RecastDemo's `undulating.obj` lies 5 km from
 the origin, where a float's own rounding is half a millimetre, so it is
 compared with the float port only after a move to near the origin; at its own
 place the integer variant is checked against itself. `-Dfuzz-seed=<n>` moves
-the seeded tests to other inputs. Port time divided by original time, on an
-AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
+the seeded tests to other inputs. The port against the original, on an AMD
+Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
 `-O3`:
 
-| feature | port / original |
-| --- | ---: |
-| `NavMeshQuery.findPath` | 0.91 |
-| `NavMeshQuery.raycast` | 0.71 |
-| `Crowd.update`, 128 agents | 0.97 |
-| `NavMesh.addTile + removeTile` | 1.23 |
-| `TileCache.addObstacle + removeObstacle + update` | 1.08 |
+| feature | the port |
+| --- | --- |
+| `NavMeshQuery.findPath` | 9% faster |
+| `NavMeshQuery.raycast` | 28% faster |
+| `Crowd.update`, 128 agents | 3% faster |
+| `NavMesh.addTile + removeTile` | 10% slower |
+| `TileCache.addObstacle + removeObstacle + update` | 8% slower |
 
-The machine was busy while these ran; each is the best median of three
-runs. The integer queries take 1.09 to 1.59 times as long as the float
-port's (`findPath` 1.11, `raycast` 1.59).
+Each is the best median of three runs. The integer queries are 7% to 68%
+slower than the float port's (`findPath` 9%, `raycast` 68%).
 
 [`doc/TESTING.md`](doc/TESTING.md) describes the tests;
 [`doc/BENCHMARKS.md`](doc/BENCHMARKS.md) has every row, the flags, the

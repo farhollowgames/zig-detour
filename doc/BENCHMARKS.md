@@ -9,10 +9,10 @@ rounds each side is timed.
 
 The tables below were measured on an AMD Ryzen 9 9950X3D under Linux 7.3,
 with the process pinned to one core (`taskset -c 6 zig build bench`), on
-11 November 2026. The machine was busy with other work while they ran (a
-load average of 8 to 26 on its 32 threads), so the whole benchmark ran three
-times and each side's best median of the three is given, with the range of
-that run.
+11 November 2026. The runs began at a load average under 3 on its 32
+threads, and other work on the machine raised it to 20 to 26 while they ran,
+so the whole benchmark ran three times and each side's best median of the
+three is given, with the range of that run.
 
 - The port: Zig 0.17.0, ReleaseFast, for the machine's own CPU, every build
   switch off.
@@ -58,7 +58,7 @@ original, and in the last table the float port.
   passes them: each runs as compiled on its own, as the original's library
   does. Without it, the port's side could be folded into the timing loop; a
   generator handed to `findRandomPoint` from a single call site was
-  devirtualized that way and the row read 0.39 where it is 0.68.
+  devirtualized that way and the row read 0.39 where it is 0.69.
 - The original is reached through a thin C function that calls the library,
   built separately, so each of its calls costs one call more than the
   port's. The row "calibration: one call through an opaque pointer" times
@@ -76,126 +76,130 @@ original, and in the last table the float port.
 
 ## Where the port is slower
 
-- `navMeshDataSwapEndian`: both sides swap the vertices sixteen words at a
-  time, and the port swaps each polygon, tree node and detail record with
-  one shuffle; the cause of the rest of the gap is not found yet.
-- `closestHeightOnTriangle`: the timing loop inlines the port's function,
-  and the optional it returns stays in registers; the inlined code takes the
-  same steps, in the same order, as the original's function. The cause of
-  the gap is not found yet. A version that joins the inside tests without
-  branches was no faster.
-- `overlapPolyPoly2d`, `NavMesh.addTile + removeTile` and the tile cache
-  rows: each takes the same steps as the original, and the cause is not
+- `navMeshDataSwapEndian` (1.15): both sides swap the vertices sixteen words
+  at a time, and the port swaps each polygon, tree node and detail record
+  with one shuffle; the cause of the rest of the gap is not found yet.
+- The geometry helpers of a few nanoseconds, called through the opaque
+  pointer: `intersectSegmentPoly2d` (2.10), `intersectSegmentSegment2d`
+  (1.39), `closestHeightOnTriangle` (1.32), `distancePointSegmentSqr2d`
+  (1.28), `closestPointOnTriangle` (1.19), `overlapPolyPoly2d` (1.10). Each
+  takes the same steps as the original; on calls this short the way the
+  result comes back (an optional or a struct, against the original's out
+  pointers) and the call itself weigh, and the cause is not found yet.
+- `ObstacleAvoidanceQuery.addCircle + addSegment + reset` (1.22),
+  `NavMesh.addTile + removeTile` (1.10) and the tile cache rows (1.02 to
+  1.23): each takes the same steps as the original, and the cause is not
   found yet.
-- The integer queries take 1.09 to 1.59 times as long as the float port's.
+- The integer queries take 1.07 to 1.68 times as long as the float port's.
   Their arithmetic is exact: a product of two products is 128 bits, a hit
   along a ray or an edge is an exact fraction compared by cross
   multiplication, and a rounded division is an integer division, slower
-  than the float port's. The widest gaps are `raycast` (1.59: two fraction
+  than the float port's. The widest gaps are `raycast` (1.68: two fraction
   compares per polygon edge, and a normal made unit length by a root and
-  integer divisions), `getPolyHeight` (1.43: an integer division per height)
-  and `findDistanceToWall` (1.42). Before this round of work they took 1.27 to
-  2.23 times as long; see `integer-design.md` for where 64 bits replaced 128
-  and divisions became products.
+  integer divisions), `moveAlongSurface` (1.46), `getPolyHeight` (1.40: an
+  integer division per height) and `findDistanceToWall` (1.39). Before this
+  round of work they took 1.27 to 2.23 times as long; see
+  `integer-design.md` for where 64 bits replaced 128 and divisions became
+  products.
 
 ## Navigation mesh and tile builder
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| calibration: one call through the C interface | call | 0.8 ns | 0.1 ns | 0.12 | 0.8 ns to 0.8 ns | 0.1 ns to 0.1 ns |
-| createNavMeshData | tile | 352 ns | 354 ns | 1.01 | 348 ns to 360 ns | 351 ns to 358 ns |
-| NavMesh.addTile + removeTile | tile | 282 ns | 348 ns | 1.23 | 281 ns to 284 ns | 346 ns to 358 ns |
-| NavMesh.storeTileState + restoreTileState | tile | 9.3 ns | 7.7 ns | 0.83 | 9.3 ns to 9.4 ns | 7.7 ns to 7.7 ns |
-| NavMesh.getTileAndPolyByRef | call | 1.5 ns | 1.2 ns | 0.80 | 1.5 ns to 1.6 ns | 1.2 ns to 1.2 ns |
-| NavMesh.isValidPolyRef | call | 1.1 ns | 0.7 ns | 0.64 | 1.1 ns to 1.1 ns | 0.7 ns to 0.7 ns |
-| NavMesh.setPolyFlags + getPolyFlags | call | 1.4 ns | 0.9 ns | 0.64 | 1.4 ns to 1.4 ns | 0.9 ns to 0.9 ns |
-| NavMesh.setPolyArea + getPolyArea | call | 1.4 ns | 1.0 ns | 0.71 | 1.4 ns to 1.4 ns | 1.0 ns to 1.0 ns |
-| NavMesh.calcTileLoc | call | 1.0 ns | 0.9 ns | 0.90 | 1.0 ns to 1.0 ns | 0.9 ns to 0.9 ns |
-| NavMesh.getTilesAt | call | 2.2 ns | 1.8 ns | 0.82 | 2.1 ns to 2.2 ns | 1.8 ns to 1.8 ns |
-| NavMesh.getTileAt | call | 1.7 ns | 1.0 ns | 0.59 | 1.7 ns to 1.7 ns | 1.0 ns to 1.0 ns |
-| NavMesh.getTileRefAt | call | 6.3 ns | 1.3 ns | 0.21 | 6.2 ns to 11.0 ns | 1.3 ns to 1.3 ns |
-| NavMesh.getTileByRef | call | 1.2 ns | 0.6 ns | 0.50 | 1.2 ns to 1.2 ns | 0.6 ns to 0.6 ns |
-| NavMesh.getOffMeshConnectionPolyEndPoints | call | 3.9 ns | 2.8 ns | 0.72 | 3.9 ns to 4.0 ns | 2.8 ns to 2.8 ns |
-| NavMesh.getOffMeshConnectionByRef | call | 1.5 ns | 1.2 ns | 0.80 | 1.5 ns to 1.5 ns | 1.2 ns to 1.2 ns |
-| nav_mesh_builder.navMeshDataSwapEndian | MB/s | 71452 | 61603 | 1.16 | 70281 to 72573 | 61043 to 61746 |
-| nav_mesh_builder.navMeshHeaderSwapEndian | call | 3.0 ns | 3.0 ns | 1.00 | 2.9 ns to 3.0 ns | 2.9 ns to 3.0 ns |
-| common.intersectSegmentPoly2d | call | 4.6 ns | 3.7 ns | 0.80 | 4.6 ns to 4.6 ns | 3.7 ns to 3.8 ns |
-| common.distancePointPolyEdgesSqr | call | 7.1 ns | 6.7 ns | 0.94 | 7.1 ns to 7.2 ns | 6.7 ns to 6.8 ns |
-| common.pointInPolygon | call | 2.5 ns | 2.2 ns | 0.88 | 2.5 ns to 2.6 ns | 2.2 ns to 2.2 ns |
-| common.closestHeightOnTriangle | call | 2.7 ns | 5.0 ns | 1.85 | 2.7 ns to 2.7 ns | 4.9 ns to 5.0 ns |
-| common.closestPointOnTriangle | call | 3.6 ns | 3.5 ns | 0.97 | 3.5 ns to 3.6 ns | 3.5 ns to 3.6 ns |
-| common.overlapPolyPoly2d | call | 18.7 ns | 20.6 ns | 1.10 | 18.6 ns to 20.4 ns | 20.4 ns to 21.0 ns |
-| common.randomPointInConvexPoly | call | 4.5 ns | 3.8 ns | 0.84 | 4.5 ns to 4.5 ns | 3.8 ns to 3.9 ns |
-| common.distancePointSegmentSqr2d | call | 1.8 ns | 1.5 ns | 0.83 | 1.8 ns to 1.8 ns | 1.5 ns to 1.6 ns |
-| common.intersectSegmentSegment2d | call | 1.8 ns | 1.3 ns | 0.72 | 1.8 ns to 1.8 ns | 1.3 ns to 1.3 ns |
-| common.calcPolyCenter | call | 2.7 ns | 1.8 ns | 0.67 | 2.7 ns to 2.8 ns | 1.8 ns to 1.8 ns |
+| calibration: one call through an opaque pointer | call | 1.1 ns | 1.1 ns | 1.00 | 1.1 ns to 1.1 ns | 1.1 ns to 1.1 ns |
+| createNavMeshData | tile | 351 ns | 342 ns | 0.97 | 349 ns to 355 ns | 339 ns to 344 ns |
+| NavMesh.addTile + removeTile | tile | 302 ns | 331 ns | 1.10 | 301 ns to 307 ns | 328 ns to 365 ns |
+| NavMesh.storeTileState + restoreTileState | tile | 9.4 ns | 9.0 ns | 0.96 | 9.4 ns to 9.5 ns | 9.0 ns to 9.0 ns |
+| NavMesh.getTileAndPolyByRef | call | 2.1 ns | 2.0 ns | 0.95 | 2.1 ns to 2.1 ns | 2.0 ns to 2.0 ns |
+| NavMesh.isValidPolyRef | call | 1.5 ns | 1.3 ns | 0.87 | 1.4 ns to 1.7 ns | 1.1 ns to 1.3 ns |
+| NavMesh.setPolyFlags + getPolyFlags | call | 1.6 ns | 1.5 ns | 0.94 | 1.6 ns to 1.6 ns | 1.5 ns to 1.5 ns |
+| NavMesh.setPolyArea + getPolyArea | call | 1.7 ns | 1.5 ns | 0.88 | 1.7 ns to 1.7 ns | 1.5 ns to 1.5 ns |
+| NavMesh.calcTileLoc | call | 1.4 ns | 1.4 ns | 1.00 | 1.2 ns to 1.4 ns | 1.4 ns to 1.4 ns |
+| NavMesh.getTilesAt | call | 2.5 ns | 2.0 ns | 0.80 | 2.4 ns to 2.6 ns | 2.0 ns to 2.1 ns |
+| NavMesh.getTileAt | call | 1.7 ns | 1.5 ns | 0.88 | 1.6 ns to 1.7 ns | 1.5 ns to 1.6 ns |
+| NavMesh.getTileRefAt | call | 1.6 ns | 1.6 ns | 1.00 | 1.6 ns to 1.7 ns | 1.6 ns to 1.6 ns |
+| NavMesh.getTileByRef | call | 1.4 ns | 1.2 ns | 0.86 | 1.4 ns to 1.4 ns | 1.2 ns to 1.2 ns |
+| NavMesh.getOffMeshConnectionPolyEndPoints | call | 4.0 ns | 3.7 ns | 0.93 | 4.0 ns to 4.0 ns | 3.7 ns to 3.8 ns |
+| NavMesh.getOffMeshConnectionByRef | call | 1.9 ns | 1.6 ns | 0.84 | 1.9 ns to 2.0 ns | 1.5 ns to 1.7 ns |
+| nav_mesh_builder.navMeshDataSwapEndian | MB/s | 72717 | 63156 | 1.15 | 69685 to 73013 | 60533 to 63484 |
+| nav_mesh_builder.navMeshHeaderSwapEndian | call | 3.3 ns | 2.3 ns | 0.70 | 3.3 ns to 3.4 ns | 2.3 ns to 2.5 ns |
+| common.intersectSegmentPoly2d | call | 4.9 ns | 10.3 ns | 2.10 | 4.9 ns to 7.5 ns | 10.2 ns to 10.3 ns |
+| common.distancePointPolyEdgesSqr | call | 7.2 ns | 7.1 ns | 0.99 | 7.1 ns to 7.5 ns | 7.0 ns to 7.4 ns |
+| common.pointInPolygon | call | 2.6 ns | 2.5 ns | 0.96 | 2.5 ns to 2.6 ns | 2.5 ns to 2.6 ns |
+| common.closestHeightOnTriangle | call | 2.8 ns | 3.7 ns | 1.32 | 2.7 ns to 2.8 ns | 3.7 ns to 3.7 ns |
+| common.closestPointOnTriangle | call | 3.6 ns | 4.3 ns | 1.19 | 3.6 ns to 4.9 ns | 4.2 ns to 6.4 ns |
+| common.overlapPolyPoly2d | call | 18.9 ns | 20.8 ns | 1.10 | 18.8 ns to 19.8 ns | 20.6 ns to 21.1 ns |
+| common.randomPointInConvexPoly | call | 4.9 ns | 4.0 ns | 0.82 | 4.8 ns to 4.9 ns | 4.0 ns to 4.1 ns |
+| common.distancePointSegmentSqr2d | call | 1.8 ns | 2.3 ns | 1.28 | 1.8 ns to 2.6 ns | 2.3 ns to 3.7 ns |
+| common.intersectSegmentSegment2d | call | 1.8 ns | 2.5 ns | 1.39 | 1.8 ns to 1.8 ns | 2.5 ns to 2.6 ns |
+| common.calcPolyCenter | call | 2.7 ns | 2.2 ns | 0.81 | 2.7 ns to 2.8 ns | 2.2 ns to 2.4 ns |
 
 ## Queries
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| NavMeshQuery.findNearestPoly | query | 175 ns | 143 ns | 0.82 | 173 ns to 177 ns | 142 ns to 145 ns |
-| NavMeshQuery.queryPolygons | query | 49.5 ns | 41.3 ns | 0.83 | 49.3 ns to 50.2 ns | 41.1 ns to 41.6 ns |
-| NavMeshQuery.queryPolygonsWith | query | 45.0 ns | 38.3 ns | 0.85 | 44.8 ns to 45.4 ns | 38.1 ns to 38.6 ns |
-| NavMeshQuery.closestPointOnPoly | query | 24.1 ns | 17.9 ns | 0.74 | 24.0 ns to 24.2 ns | 17.8 ns to 18.0 ns |
-| NavMeshQuery.closestPointOnPolyBoundary | query | 13.6 ns | 11.0 ns | 0.81 | 13.6 ns to 13.7 ns | 11.0 ns to 11.2 ns |
-| NavMeshQuery.getPolyHeight | query | 20.7 ns | 16.7 ns | 0.81 | 20.6 ns to 32.0 ns | 16.7 ns to 31.3 ns |
-| NavMeshQuery.isValidPolyRef | query | 2.3 ns | 1.0 ns | 0.43 | 2.3 ns to 2.3 ns | 1.0 ns to 1.0 ns |
-| NavMeshQuery.findPath | query | 3097 ns | 2806 ns | 0.91 | 3089 ns to 3113 ns | 2794 ns to 2824 ns |
-| NavMeshQuery sliced findPath | query | 1437 ns | 1213 ns | 0.84 | 1435 ns to 1441 ns | 1208 ns to 1222 ns |
-| NavMeshQuery sliced findPath, any angle | query | 2755 ns | 2403 ns | 0.87 | 2745 ns to 2764 ns | 2394 ns to 2418 ns |
-| NavMeshQuery.findStraightPath | query | 127 ns | 101 ns | 0.80 | 127 ns to 128 ns | 101 ns to 101 ns |
-| NavMeshQuery.findStraightPath, all crossings | query | 225 ns | 157 ns | 0.70 | 224 ns to 228 ns | 156 ns to 158 ns |
-| NavMeshQuery.moveAlongSurface | query | 26.2 ns | 19.1 ns | 0.73 | 26.2 ns to 26.4 ns | 19.0 ns to 19.1 ns |
-| NavMeshQuery.raycast | query | 52.1 ns | 36.9 ns | 0.71 | 52.0 ns to 52.3 ns | 36.8 ns to 37.1 ns |
-| NavMeshQuery.raycast, with costs | query | 59.2 ns | 44.7 ns | 0.76 | 59.0 ns to 59.7 ns | 44.6 ns to 44.8 ns |
-| NavMeshQuery.raycastPath | query | 51.3 ns | 37.2 ns | 0.73 | 51.1 ns to 51.5 ns | 37.1 ns to 37.4 ns |
-| NavMeshQuery.findPolysAroundCircle | query | 441 ns | 330 ns | 0.75 | 440 ns to 443 ns | 327 ns to 331 ns |
-| NavMeshQuery.findPolysAroundShape | query | 215 ns | 113 ns | 0.53 | 214 ns to 216 ns | 113 ns to 114 ns |
-| NavMeshQuery.findLocalNeighbourhood | query | 263 ns | 223 ns | 0.85 | 262 ns to 264 ns | 221 ns to 224 ns |
-| NavMeshQuery.getPolyWallSegments | query | 37.6 ns | 29.7 ns | 0.79 | 37.5 ns to 37.6 ns | 29.7 ns to 29.8 ns |
-| NavMeshQuery.findDistanceToWall | query | 166 ns | 97.8 ns | 0.59 | 165 ns to 167 ns | 97.4 ns to 98.6 ns |
-| NavMeshQuery.findRandomPoint | query | 371 ns | 144 ns | 0.39 | 371 ns to 371 ns | 143 ns to 146 ns |
-| NavMeshQuery.findRandomPointAroundCircle | query | 642 ns | 522 ns | 0.81 | 638 ns to 644 ns | 520 ns to 534 ns |
+| NavMeshQuery.findNearestPoly | query | 178 ns | 150 ns | 0.84 | 176 ns to 179 ns | 149 ns to 151 ns |
+| NavMeshQuery.queryPolygons | query | 50.3 ns | 45.1 ns | 0.90 | 50.1 ns to 51.0 ns | 44.9 ns to 51.9 ns |
+| NavMeshQuery.queryPolygonsWith | query | 46.2 ns | 42.4 ns | 0.92 | 45.9 ns to 46.8 ns | 42.3 ns to 43.8 ns |
+| NavMeshQuery.closestPointOnPoly | query | 23.9 ns | 22.1 ns | 0.92 | 23.7 ns to 24.0 ns | 21.9 ns to 22.2 ns |
+| NavMeshQuery.closestPointOnPolyBoundary | query | 13.7 ns | 11.5 ns | 0.84 | 13.6 ns to 13.8 ns | 11.4 ns to 11.6 ns |
+| NavMeshQuery.getPolyHeight | query | 21.1 ns | 17.7 ns | 0.84 | 20.9 ns to 22.9 ns | 17.6 ns to 17.9 ns |
+| NavMeshQuery.isValidPolyRef | query | 2.4 ns | 1.4 ns | 0.58 | 2.3 ns to 2.5 ns | 1.4 ns to 1.5 ns |
+| NavMeshQuery.findPath | query | 3117 ns | 2831 ns | 0.91 | 3094 ns to 3124 ns | 2808 ns to 2860 ns |
+| NavMeshQuery sliced findPath | query | 1430 ns | 1250 ns | 0.87 | 1423 ns to 1443 ns | 1243 ns to 1254 ns |
+| NavMeshQuery sliced findPath, any angle | query | 2780 ns | 2436 ns | 0.88 | 2758 ns to 2858 ns | 2407 ns to 2685 ns |
+| NavMeshQuery.findStraightPath | query | 133 ns | 105 ns | 0.79 | 131 ns to 136 ns | 104 ns to 110 ns |
+| NavMeshQuery.findStraightPath, all crossings | query | 229 ns | 165 ns | 0.72 | 224 ns to 234 ns | 163 ns to 169 ns |
+| NavMeshQuery.moveAlongSurface | query | 26.7 ns | 18.4 ns | 0.69 | 26.5 ns to 27.4 ns | 18.3 ns to 19.0 ns |
+| NavMeshQuery.raycast | query | 53.0 ns | 38.0 ns | 0.72 | 52.8 ns to 91.0 ns | 37.8 ns to 70.3 ns |
+| NavMeshQuery.raycast, with costs | query | 59.7 ns | 46.0 ns | 0.77 | 59.6 ns to 62.3 ns | 45.8 ns to 46.6 ns |
+| NavMeshQuery.raycastPath | query | 51.9 ns | 37.6 ns | 0.72 | 51.8 ns to 52.1 ns | 37.4 ns to 37.8 ns |
+| NavMeshQuery.findPolysAroundCircle | query | 437 ns | 340 ns | 0.78 | 433 ns to 448 ns | 335 ns to 355 ns |
+| NavMeshQuery.findPolysAroundShape | query | 219 ns | 130 ns | 0.59 | 217 ns to 231 ns | 129 ns to 161 ns |
+| NavMeshQuery.findLocalNeighbourhood | query | 269 ns | 229 ns | 0.85 | 268 ns to 281 ns | 228 ns to 234 ns |
+| NavMeshQuery.getPolyWallSegments | query | 37.9 ns | 31.2 ns | 0.82 | 37.6 ns to 40.0 ns | 31.0 ns to 33.0 ns |
+| NavMeshQuery.findDistanceToWall | query | 169 ns | 103 ns | 0.61 | 168 ns to 177 ns | 102 ns to 106 ns |
+| NavMeshQuery.findRandomPoint | query | 380 ns | 262 ns | 0.69 | 378 ns to 395 ns | 259 ns to 267 ns |
+| NavMeshQuery.findRandomPointAroundCircle | query | 645 ns | 541 ns | 0.84 | 641 ns to 649 ns | 536 ns to 549 ns |
 
 ## Crowd
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| Crowd.update, 128 agents | agent step | 4284 ns | 4151 ns | 0.97 | 4233 ns to 4307 ns | 4101 ns to 4178 ns |
-| Crowd.update, 16 agents | agent step | 2117 ns | 1990 ns | 0.94 | 2099 ns to 2131 ns | 1971 ns to 2012 ns |
-| Crowd.update, 128 agents, no avoidance or separation | agent step | 1872 ns | 1773 ns | 0.95 | 1854 ns to 1895 ns | 1752 ns to 1795 ns |
-| Crowd.addAgent + removeAgent | agent | 133 ns | 112 ns | 0.84 | 132 ns to 134 ns | 111 ns to 114 ns |
-| Crowd.requestMoveTarget | call | 1.3 ns | 1.0 ns | 0.77 | 1.3 ns to 1.3 ns | 1.0 ns to 1.0 ns |
-| ObstacleAvoidanceQuery.sampleVelocityGrid | situation | 13.9 us | 13.7 us | 0.99 | 13.9 us to 14.0 us | 13.7 us to 13.8 us |
-| ObstacleAvoidanceQuery.sampleVelocityAdaptive | situation | 1990 ns | 1940 ns | 0.97 | 1968 ns to 2004 ns | 1926 ns to 1957 ns |
-| ObstacleAvoidanceQuery.addCircle + addSegment + reset | situation | 16.9 ns | 13.4 ns | 0.79 | 16.9 ns to 16.9 ns | 13.4 ns to 13.4 ns |
-| PathCorridor.setCorridor + findCorners | path | 118 ns | 94.8 ns | 0.80 | 118 ns to 118 ns | 94.6 ns to 94.9 ns |
-| PathCorridor.setCorridor + movePosition | path | 64.8 ns | 52.4 ns | 0.81 | 64.5 ns to 65.3 ns | 52.2 ns to 52.6 ns |
-| PathCorridor.setCorridor + optimizePathVisibility | path | 66.9 ns | 43.6 ns | 0.65 | 66.7 ns to 67.3 ns | 43.5 ns to 43.8 ns |
-| PathCorridor.setCorridor + optimizePathTopology | path | 358 ns | 248 ns | 0.69 | 357 ns to 361 ns | 247 ns to 250 ns |
-| LocalBoundary.update | call | 693 ns | 602 ns | 0.87 | 692 ns to 695 ns | 600 ns to 604 ns |
-| ProximityGrid.clear + addItem + queryItems | agent | 330 ns | 231 ns | 0.70 | 317 ns to 348 ns | 228 ns to 234 ns |
-| PathQueue.request + update + getPathResult | path | 361 ns | 259 ns | 0.72 | 361 ns to 365 ns | 258 ns to 263 ns |
+| Crowd.update, 128 agents | agent step | 4340 ns | 4222 ns | 0.97 | 4287 ns to 4608 ns | 4175 ns to 4470 ns |
+| Crowd.update, 16 agents | agent step | 2123 ns | 2049 ns | 0.97 | 2109 ns to 2154 ns | 2026 ns to 2076 ns |
+| Crowd.update, 128 agents, no avoidance or separation | agent step | 1906 ns | 1810 ns | 0.95 | 1889 ns to 1926 ns | 1765 ns to 1826 ns |
+| Crowd.addAgent + removeAgent | agent | 138 ns | 121 ns | 0.88 | 137 ns to 140 ns | 120 ns to 121 ns |
+| Crowd.requestMoveTarget | call | 1.7 ns | 1.3 ns | 0.76 | 1.6 ns to 1.8 ns | 1.3 ns to 1.4 ns |
+| ObstacleAvoidanceQuery.sampleVelocityGrid | situation | 14.1 us | 13.8 us | 0.98 | 14.1 us to 14.5 us | 13.7 us to 14.1 us |
+| ObstacleAvoidanceQuery.sampleVelocityAdaptive | situation | 1989 ns | 1981 ns | 1.00 | 1979 ns to 2047 ns | 1971 ns to 2192 ns |
+| ObstacleAvoidanceQuery.addCircle + addSegment + reset | situation | 17.2 ns | 21.0 ns | 1.22 | 17.1 ns to 18.8 ns | 20.8 ns to 23.7 ns |
+| PathCorridor.setCorridor + findCorners | path | 119 ns | 99.7 ns | 0.84 | 118 ns to 186 ns | 99.1 ns to 161 ns |
+| PathCorridor.setCorridor + movePosition | path | 67.7 ns | 60.9 ns | 0.90 | 67.0 ns to 78.9 ns | 60.2 ns to 61.8 ns |
+| PathCorridor.setCorridor + optimizePathVisibility | path | 70.4 ns | 50.2 ns | 0.71 | 70.2 ns to 71.1 ns | 50.0 ns to 50.4 ns |
+| PathCorridor.setCorridor + optimizePathTopology | path | 363 ns | 258 ns | 0.71 | 362 ns to 493 ns | 257 ns to 283 ns |
+| LocalBoundary.update | call | 701 ns | 622 ns | 0.89 | 694 ns to 705 ns | 621 ns to 625 ns |
+| ProximityGrid.clear + addItem + queryItems | agent | 355 ns | 231 ns | 0.65 | 350 ns to 362 ns | 229 ns to 235 ns |
+| PathQueue.request + update + getPathResult | path | 362 ns | 263 ns | 0.73 | 361 ns to 364 ns | 262 ns to 264 ns |
 
 ## Tile cache
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| TileCache.buildNavMeshTile | tile | 15.0 us | 15.2 us | 1.01 | 14.9 us to 15.1 us | 15.2 us to 15.3 us |
-| TileCache.addObstacle + removeObstacle + update | obstacle | 36.7 us | 39.6 us | 1.08 | 36.5 us to 36.9 us | 39.4 us to 39.9 us |
-| TileCache.queryTiles | query | 22.4 ns | 27.1 ns | 1.21 | 22.2 ns to 22.7 ns | 26.8 ns to 28.8 ns |
-| TileCache.removeTile + addTile | tile | 8.5 ns | 9.2 ns | 1.08 | 8.4 ns to 8.5 ns | 9.1 ns to 9.3 ns |
+| TileCache.buildNavMeshTile | tile | 15.0 us | 15.3 us | 1.02 | 15.0 us to 16.1 us | 15.2 us to 15.6 us |
+| TileCache.addObstacle + removeObstacle + update | obstacle | 36.9 us | 39.9 us | 1.08 | 36.5 us to 58.3 us | 39.3 us to 64.6 us |
+| TileCache.queryTiles | query | 22.6 ns | 27.9 ns | 1.23 | 22.5 ns to 22.8 ns | 27.8 ns to 29.6 ns |
+| TileCache.removeTile + addTile | tile | 10.4 ns | 8.2 ns | 0.79 | 10.2 ns to 11.6 ns | 8.0 ns to 11.1 ns |
 
 ## Integer queries against the float port
 
 | feature | per | baseline | port | port / baseline | baseline range | port range |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| integer NavMeshQuery.findNearestPoly | query | 143 ns | 181 ns | 1.27 | 142 ns to 145 ns | 180 ns to 182 ns |
-| integer NavMeshQuery.getPolyHeight | query | 16.4 ns | 23.5 ns | 1.43 | 16.4 ns to 16.5 ns | 23.5 ns to 23.6 ns |
-| integer NavMeshQuery.findPath | query | 2638 ns | 2931 ns | 1.11 | 2632 ns to 2649 ns | 2926 ns to 2939 ns |
-| integer NavMeshQuery.findStraightPath | query | 98.1 ns | 110 ns | 1.12 | 97.7 ns to 98.3 ns | 110 ns to 111 ns |
-| integer NavMeshQuery.moveAlongSurface | query | 18.9 ns | 23.3 ns | 1.23 | 18.8 ns to 19.1 ns | 23.2 ns to 23.3 ns |
-| integer NavMeshQuery.raycast | query | 33.2 ns | 52.9 ns | 1.59 | 33.0 ns to 33.6 ns | 52.8 ns to 53.1 ns |
-| integer NavMeshQuery.findPolysAroundCircle | query | 321 ns | 350 ns | 1.09 | 320 ns to 322 ns | 348 ns to 353 ns |
-| integer NavMeshQuery.findDistanceToWall | query | 88.8 ns | 126 ns | 1.42 | 88.2 ns to 89.1 ns | 125 ns to 126 ns |
+| integer NavMeshQuery.findNearestPoly | query | 153 ns | 194 ns | 1.27 | 149 ns to 160 ns | 190 ns to 204 ns |
+| integer NavMeshQuery.getPolyHeight | query | 18.0 ns | 25.2 ns | 1.40 | 17.6 ns to 18.5 ns | 24.7 ns to 26.1 ns |
+| integer NavMeshQuery.findPath | query | 2690 ns | 2939 ns | 1.09 | 2684 ns to 2694 ns | 2934 ns to 3294 ns |
+| integer NavMeshQuery.findStraightPath | query | 110 ns | 128 ns | 1.16 | 106 ns to 141 ns | 125 ns to 143 ns |
+| integer NavMeshQuery.moveAlongSurface | query | 19.4 ns | 28.3 ns | 1.46 | 18.9 ns to 34.0 ns | 28.0 ns to 47.1 ns |
+| integer NavMeshQuery.raycast | query | 35.9 ns | 60.3 ns | 1.68 | 35.6 ns to 36.5 ns | 59.9 ns to 62.5 ns |
+| integer NavMeshQuery.findPolysAroundCircle | query | 341 ns | 365 ns | 1.07 | 334 ns to 497 ns | 360 ns to 558 ns |
+| integer NavMeshQuery.findDistanceToWall | query | 98.5 ns | 137 ns | 1.39 | 97.6 ns to 99.9 ns | 136 ns to 145 ns |
