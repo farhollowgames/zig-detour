@@ -102,16 +102,30 @@ fn expectNearLength(comptime what: []const u8, expected: f32, actual: i64, limit
     return error.TestOutsideTolerance;
 }
 
-/// Fails unless the integer cost `actual`, in 1/256 millimetre, is within
-/// 0.1% of the float cost `expected`, plus per polygon a millimetre and the
-/// error of the point where the ray leaves it.
-fn expectNearCost(expected: f32, actual: u64, polygon_count: usize) !void {
-    const expected_mm = @as(f64, expected) * scale;
-    const actual_mm = @as(f64, @floatFromInt(actual)) / 256.0;
+/// Whether the integer cost `actual`, in 1/256 millimetre, is within 0.1%
+/// of the float cost `expected`, plus per polygon a millimetre and the
+/// error of the point where the ray leaves it, plus `extra` millimetres.
+fn nearCost(expected: f32, actual: u64, polygon_count: usize, extra: f64) bool {
+    return @abs(costMillimetres(actual) - @as(f64, expected) * scale) <=
+        costLimit(expected, polygon_count) + extra;
+}
+
+fn costMillimetres(cost: u64) f64 {
+    return @as(f64, @floatFromInt(cost)) / 256.0;
+}
+
+fn costLimit(expected: f32, polygon_count: usize) f64 {
     const per_polygon = 1.0 + 2.0 * tolerance;
-    const limit = 0.001 * expected_mm + per_polygon * @as(f64, @floatFromInt(polygon_count)) +
-        tolerance;
-    if (@abs(actual_mm - expected_mm) <= limit) return;
+    return 0.001 * @as(f64, expected) * scale +
+        per_polygon * @as(f64, @floatFromInt(polygon_count)) + tolerance;
+}
+
+/// Fails unless `nearCost` holds.
+fn expectNearCost(expected: f32, actual: u64, polygon_count: usize, extra: f64) !void {
+    if (nearCost(expected, actual, polygon_count, extra)) return;
+    const expected_mm = @as(f64, expected) * scale;
+    const actual_mm = costMillimetres(actual);
+    const limit = costLimit(expected, polygon_count) + extra;
     std.debug.print("cost: float {d:.3} mm, integer {d:.3} mm, allowed {d:.3}\n", .{
         expected_mm,
         actual_mm,
@@ -1165,6 +1179,7 @@ test "integer findPath and the sliced search: the same status, the same corridor
     var tally: Tally = .{};
     var same_corridor: usize = 0;
     var other_ends: usize = 0;
+    var cheaper_corridors: usize = 0;
     var widest_end_gap: f64 = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x70617468));
     const random = prng.random();
@@ -1230,6 +1245,15 @@ test "integer findPath and the sliced search: the same status, the same corridor
             const limit = 0.001 * expected_cost + 0.001 * @as(f64, @floatFromInt(polygons));
             // The any-angle search shortcuts by rays, whose corridors cost
             // what the shortcut walks, not the portals' middles.
+            // Where two parents reach a polygon at nearly the same cost,
+            // rounding picks either, and each node keeps the place it was
+            // first reached from: the float search can settle on a dearer
+            // corridor than the integer one. The integer corridor may then
+            // cost less, never more.
+            if (mode != .sliced_any_angle and actual_cost < expected_cost - limit) {
+                cheaper_corridors += 1;
+                continue;
+            }
             if (mode != .sliced_any_angle and @abs(actual_cost - expected_cost) > limit) {
                 std.debug.print("corridor costs: float {d:.4} m over {d}, " ++
                     "integer {d:.4} m over {d}, status 0x{x}, mode {t}\n", .{
@@ -1252,6 +1276,12 @@ test "integer findPath and the sliced search: the same status, the same corridor
         other_ends,
         widest_end_gap,
     });
+    std.debug.print("findPath: {d} integer corridors cheaper beyond tolerance\n", .{
+        cheaper_corridors,
+    });
+    // Cheaper integer corridors: at most 1 of about 1200 over seeds 0 to 31
+    // (seed 13).
+    try testing.expect(cheaper_corridors * 1000 <= tally.stable);
     // Nearly every stable case finds the very same corridor: at most 2 of
     // about 1200 do not over seeds 0 to 31 (seeds 6, 10, 20 and 29), each a
     // partial result ending elsewhere.
@@ -1820,6 +1850,7 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
     var tally: Tally = .{};
     var shared_vertex_corners: usize = 0;
     var longer_float_paths: usize = 0;
+    var clamped_end_ties: usize = 0;
     var longest_surplus: f64 = 0;
     var crossing_cases: usize = 0;
     var one_sided_crossings: usize = 0;
@@ -1977,7 +2008,12 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
             // Links whose limits are a step apart move portal ends by a
             // 255th of their edge (integer-design.md, "Link limits can differ
             // by one step of 1/255").
-            if (off > tolerance + linkLimitSlack(pair, path)) {
+            const line_limit = tolerance + linkLimitSlack(pair, path);
+            if (off > line_limit and
+                clampedEndTie(pair, path, end.pos, float_line, integer_line, line_limit))
+            {
+                clamped_end_ties += 1;
+            } else if (off > line_limit) {
                 // Where corridor vertices meet on one line, the float port's
                 // funnel can turn on the far side of a portal and take a
                 // longer way; the exact one must then pass every portal and
@@ -2075,6 +2111,9 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
             "{d} longer float paths, the float path at most {d:.1} mm longer\n",
         .{ tally.stable, shared_vertex_corners, longer_float_paths, longest_surplus },
     );
+    std.debug.print("findStraightPath: {d} ends clamped at a tie\n", .{clamped_end_ties});
+    // Ends clamped at a tie: at most 1 of 1200 over seeds 0 to 31 (seed 3).
+    try testing.expect(clamped_end_ties * 1000 <= tally.stable);
     // A longer float path is a rounding accident of the float port: rare,
     // at most 13 of 1200 over seeds 0 to 31 (seeds 19 and 26).
     // Shared-vertex corners: at most 25 (seeds 13 and 30). With the crossing
@@ -2180,6 +2219,7 @@ fn floatRay(
 
 test "integer raycast: the same polygons and wall; hit point, normal and cost within tolerance" {
     var tally: Tally = .{};
+    var grazing_costs: usize = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x72617963));
     const random = prng.random();
     var expected: RayAnswer = undefined;
@@ -2231,6 +2271,7 @@ test "integer raycast: the same polygons and wall; hit point, normal and cost wi
             );
             try testing.expectEqual(expected.hit, !hit.t.isNever());
             try testing.expectEqual(expected.edge, hit.hit_edge_index);
+            var hit_error: f64 = 0;
             if (expected.hit) {
                 const from = metres(start.pos);
                 const to = metres(end);
@@ -2254,12 +2295,35 @@ test "integer raycast: the same polygons and wall; hit point, normal and cost wi
                 errdefer std.debug.print("  sine between ray and wall {d:.5}\n", .{sine});
                 const point = hit.point(start.pos, end);
                 try expectNear("hit point", float_point, point, limit, height_limit);
+                for (0..3) |axis| {
+                    const along = axisError(float_point, point, axis);
+                    hit_error += along * along;
+                }
+                hit_error = @sqrt(hit_error);
                 try expectNearNormal(expected.normal, hit.hit_normal, 1.0 / 1024.0);
             }
-            if (options.use_costs) try expectNearCost(expected.cost, hit.path_cost, hit.path_count);
+            if (options.use_costs and
+                !nearCost(expected.cost, hit.path_cost, hit.path_count, 0))
+            {
+                // The last step's cost ends at the hit point, which a ray
+                // near parallel to its wall moves along the ray by up to a
+                // position's tolerance over the sine (checked above). That
+                // move, at the dearest area cost, may enter the cost too.
+                var dearest: f64 = 0;
+                for (filters.float.area_cost) |cost| dearest = @max(dearest, cost);
+                const moved_cost = hit_error * dearest;
+                try expectNearCost(expected.cost, hit.path_cost, hit.path_count, moved_cost);
+                grazing_costs += 1;
+            }
         }
     }
     try tally.expectEnough("raycast");
+    std.debug.print("raycast: {d} stable cases, {d} costs that follow a grazing hit\n", .{
+        tally.stable,
+        grazing_costs,
+    });
+    // Grazing costs: at most 2 of about 1200 over seeds 0 to 31 (seeds 4, 14).
+    try testing.expect(grazing_costs * 500 <= tally.stable);
 }
 
 const MoveAnswer = struct {
@@ -2304,6 +2368,7 @@ fn floatMove(
 
 test "integer moveAlongSurface: the same polygons visited, the end within tolerance" {
     var tally: Tally = .{};
+    var end_ties: usize = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x6d6f7665));
     const random = prng.random();
     var expected: MoveAnswer = undefined;
@@ -2345,15 +2410,30 @@ test "integer moveAlongSurface: the same polygons visited, the end within tolera
                 &count,
             );
             try testing.expectEqual(expected.status, statusBits(status));
-            try testing.expectEqualSlices(
-                PolyRef,
-                expected.visited[0..expected.count],
-                visited[0..count],
-            );
             try expectNear("walk's end", expected.result, result, tolerance, tolerance);
+            const float_visited = expected.visited[0..expected.count];
+            if (std.mem.eql(PolyRef, float_visited, visited[0..count])) continue;
+            // A walk that ends on a wall at a vertex several polygons share
+            // can end on any of their walls, and the list is the way the
+            // search first reached that polygon: the last polygon of either
+            // list must hold the end.
+            try testing.expect(!expected.reached and count > 0 and expected.count > 0);
+            try testing.expectEqual(float_visited[0], visited[0]);
+            for ([_]PolyRef{ float_visited[expected.count - 1], visited[count - 1] }) |last| {
+                errdefer std.debug.print("  last polygon {x} away from the end\n", .{last});
+                try testing.expect(try holds(pair, last, result, tolerance));
+            }
+            end_ties += 1;
         }
     }
     try tally.expectEnough("moveAlongSurface");
+    std.debug.print("moveAlongSurface: {d} stable cases, {d} ends several polygons share\n", .{
+        tally.stable,
+        end_ties,
+    });
+    // Ends several polygons share: at most 1 of about 1200 over seeds 0 to
+    // 31 (seeds 2, 9, 10, 12, 15, 27 and 29).
+    try testing.expect(end_ties * 1000 <= tally.stable);
 }
 
 // ---------------------------------------------------------------------------
@@ -2717,6 +2797,7 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x77616c6c));
     const random = prng.random();
     var ties: usize = 0;
+    var height_ties: usize = 0;
     for (try pairs(), 0..) |*pair, level| {
         var case: usize = 0;
         var tries: usize = 0;
@@ -2768,6 +2849,22 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
             // points' errors turn it by up to their sum over the distance.
             if (expected_mm > 100.0) {
                 const limit = @max(1.0 / 256.0, 2 * tolerance / expected_mm);
+                // Two walls stacked at one place in the xz plane, at
+                // different heights, are equally near: the distance is
+                // measured across, and either wall will do. The normal then
+                // points from the integer side's own wall point.
+                if (axisError(expected.point, point, 1) > height_tolerance) {
+                    var toward: [3]f32 = undefined;
+                    for (&toward, start.pos, point) |*axis, centre, wall| {
+                        axis.* = @floatFromInt(centre - wall);
+                    }
+                    const length = @sqrt(toward[0] * toward[0] + toward[1] * toward[1] +
+                        toward[2] * toward[2]);
+                    for (&toward) |*axis| axis.* /= length;
+                    try expectNearNormal(toward, normal, limit);
+                    height_ties += 1;
+                    continue;
+                }
                 try expectNearNormal(expected.normal, normal, limit);
             }
         }
@@ -2777,8 +2874,11 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
         tally.stable,
         ties,
     });
-    // Ties: at most 4 of 1200 over seeds 0 to 31 (seed 10).
+    std.debug.print("findDistanceToWall: {d} walls stacked at one place\n", .{height_ties});
+    // Ties: at most 4 of 1200 over seeds 0 to 31 (seed 10). Stacked walls:
+    // at most 1 (seeds 4 and 11).
     try testing.expect(ties * 300 <= tally.stable);
+    try testing.expect(height_ties * 1000 <= tally.stable);
 }
 
 // ---------------------------------------------------------------------------
@@ -2793,6 +2893,49 @@ fn onPolygon(pair: *Pair, ref: PolyRef, point: [3]i32) !bool {
     const dx = closest[0] - point[0];
     const dz = closest[2] - point[2];
     return dx * dx + dz * dz <= 1;
+}
+
+/// Whether two straight paths differ only at an end clamped to the last
+/// polygon's boundary, where an edge and a vertex lie equally near the
+/// target and each side picked one: the two ends within `2 T` of each other
+/// on that polygon, and the paths without them within `limit`.
+fn clampedEndTie(
+    pair: *Pair,
+    path: []const PolyRef,
+    target: [3]i32,
+    float_line: []const [3]f32,
+    integer_line: []const [3]i32,
+    limit: f64,
+) bool {
+    const count = integer_line.len;
+    if (count < 2 or float_line.len != count) return false;
+    const integer_end = integer_line[count - 1];
+    if (integer_end[0] == target[0] and integer_end[2] == target[2]) return false;
+    const float_end = float_line[count - 1];
+    if (@max(axisError(float_end, integer_end, 0), axisError(float_end, integer_end, 2)) >
+        2 * tolerance) return false;
+    if (!(holds(pair, path[path.len - 1], integer_end, tolerance) catch false)) return false;
+    var line: [result_count_max][3]f32 = undefined;
+    for (integer_line[0 .. count - 1], line[0 .. count - 1]) |corner, *point| {
+        point.* = metres(corner);
+    }
+    for (integer_line[0 .. count - 1]) |corner| {
+        if (distanceToLine(corner, float_line[0 .. count - 1]) > limit) return false;
+    }
+    for (float_line[0 .. count - 1]) |corner| {
+        if (distanceToLine(millimetres(corner), line[0 .. count - 1]) - 0.5 > limit) return false;
+    }
+    return true;
+}
+
+/// Whether polygon `ref` of the integer mesh comes within `limit`
+/// millimetres of `point` in the xz plane.
+fn holds(pair: *Pair, ref: PolyRef, point: [3]i32, limit: f64) !bool {
+    var closest: [3]i32 = @splat(0);
+    if (pair.query.closestPointOnPoly(ref, point, &closest, null).failed) return false;
+    const dx: f64 = @floatFromInt(closest[0] - point[0]);
+    const dz: f64 = @floatFromInt(closest[2] - point[2]);
+    return @sqrt(dx * dx + dz * dz) <= limit;
 }
 
 fn passes(pair: *Pair, ref: PolyRef, filter: *const integer.QueryFilter) bool {

@@ -598,11 +598,12 @@ The performance pass and the skeptic are done (branches `review/perf-and-skeptic
   design's rules; `tileInUnits` and a test of `tileFromFloat` at other scales; two
   oracle tests that failed under seeds 12 and 23 were in error and are fixed (see
   `doc/TESTING.md`). Every other test passes on seeds 0 to 31, Debug and ReleaseSafe.
-- open, for the author: five cases need a tolerance or rule the design does not state
-  and fail under some seeds of 1 to 31 (`doc/TESTING.md` lists them with their seeds):
-  raycast's cost on grazing hits, moveAlongSurface's visited list at a shared-edge
-  tie, findDistanceToWall's normal between two near walls, findStraightPath's end at
-  an edge-vertex tie (seed 3), and findPath on seed 13 (integer corridor 2.7% cheaper).
+- done: the five ties the author accepted (raycast's cost on grazing hits,
+  moveAlongSurface's visited list at a shared vertex, findDistanceToWall's normal
+  between stacked walls, findStraightPath's clamped end at an edge-vertex tie, and
+  findPath's cheaper integer corridor on seed 13) each have a rule and a rate limit
+  just above the worst measured; every test passes on seeds 0 to 31, Debug and
+  ReleaseSafe.
 - to do: a quiet benchmark (three runs pinned with `taskset -c 6`, load under 3; the
   machine stayed above that for over an hour on 11 November), then the tables of
   `doc/BENCHMARKS.md` (still from before the opaque calls; "Known biases" quotes

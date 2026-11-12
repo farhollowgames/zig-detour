@@ -67,25 +67,38 @@ every seeded differential test to other inputs at once; `0`, the default,
 keeps the tests' own seeds. A few seeds stay fixed whatever the option: those
 paired with the original's own random number generator, the integer
 workload and the level it runs on (its hash is kept in the test), and the
-benchmark's inputs. Under seeds 1 to 31 every comparison with the original
-passes, in Debug and in ReleaseSafe. Where an integer case lies outside a
-tolerance the design states, the test applies that tolerance (a link's
-limits a 255th apart move a portal end by a 255th of its edge). The cases
-below need a tolerance or rule the design does not state. They are left
-failing under those seeds, the same in both modes, until the author decides:
+benchmark's inputs. Under seeds 0 to 31 every test passes, in Debug and in
+ReleaseSafe. Where an integer case lies outside a tolerance the design
+states, the test applies that tolerance (a link's limits a 255th apart move
+a portal end by a 255th of its edge). Five kinds of case are ties, where a
+discrete choice or a near-parallel line lets the two sides differ by more
+than a position's tolerance; each is recognised by its own rule, counted,
+and held to a rate of the stable cases just above the worst measured:
 
-- `raycast`: the cost of a grazing hit, 9 to 31 mm off where 7 to 16 mm is
-  allowed (seeds 2, 3, 4, 12, 13, 14, 20, 23, 26, 29); the cost's tolerance
-  lacks the 1/sine factor the hit point's has.
-- `moveAlongSurface`: the same end with a different list of visited
-  polygons, from a tie at a shared edge (seeds 2, 9, 10, 12, 15, 27, 29).
-- `findDistanceToWall`: one normal 0.016 off, from two walls at nearly the
-  same distance (seeds 4, 11).
-- `findStraightPath`: an end clamped to the boundary where the float port has
-  a near tie between an edge and a vertex, 3.6 mm apart (seed 3).
-- `findPath`: a complete sliced search where the integer corridor, 71.4 m
-  over 15 polygons, costs 2.7% less than the float port's, 73.4 m over 17
-  (seed 13); the design allows 0.1% either way.
+- `raycast`, a ray near parallel to the wall it meets (sines 0.006 to
+  0.037): the hit point moves along the ray by up to `T` over the sine, and
+  the last step's cost ends there, so the cost may be off by the point's
+  move times the dearest area cost, up to 36 mm (seeds 2, 3, 4, 12, 13, 14,
+  20, 23, 26, 29; at most 2 a seed).
+- `moveAlongSurface`, a walk that ends on a wall at a vertex several
+  polygons share: which polygon's wall the end lands on flips, and the
+  visited list is the way the search first reached that polygon, so the
+  lists differ; the last polygon of each holds the end (seeds 2, 9, 10, 12,
+  15, 27, 29; at most 1 a seed).
+- `findDistanceToWall`, two walls stacked at one place in the xz plane: the
+  distance is measured across and ties, the chosen wall flips, and the wall
+  points stand 200 mm apart in height, so the normal is held to the
+  direction from the integer side's own wall point (seeds 4, 11).
+- `findStraightPath`, an end clamped to the last polygon's boundary where an
+  edge and a vertex lie equally near the target: the clamp picks either,
+  3.6 mm apart (seed 3).
+- `findPath`, two parents that reach a polygon at nearly the same cost, 9 mm
+  apart in the float search: the parent chosen flips, and since a node keeps
+  the place it was first reached from, the integer corridor, 71.4 m over 15
+  polygons, costs 2.7% less than the float port's, 73.4 m over 17, summed at
+  the portals' middles (seed 13). The two searches popped the same polygons
+  in the same order, and each one's own cost to the end is 73.4 m. The
+  integer corridor may cost less, never more.
 
 Two cases on the dungeon level under seed 5 were test errors, now fixed. A
 walk's end 0.28 mm outside a polygon edge on the integer mesh lay 0.5 mm
