@@ -1,6 +1,6 @@
 .{
     .name = .detour,
-    .version = "0.1.0",
+    .version = "0.2.1",
     .fingerprint = 0x38e032a7b3a5aca0, // Changing this has security and trust implications.
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
