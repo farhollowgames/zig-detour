@@ -2877,7 +2877,12 @@ test "rays and moves refuse the input the original refuses" {
             const full = path_capacity_max;
             try expectSameRay(&queries, filters, start, far.pos, options, prev_ref, full, &ray);
             try testing.expect(ray.status.succeeded);
-            try testing.expect(ray.count >= 1);
+            // A ray from a start on its polygon's edge that leaves the
+            // polygon misses it: both sides then give no polygon, at t 0.
+            if (ray.count == 0) {
+                try testing.expectEqual(0, ray.t);
+                continue;
+            }
             try testing.expectEqual(start.ref, ray.path[0]);
         }
     }

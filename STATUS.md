@@ -595,7 +595,9 @@ The performance pass and the skeptic are done (branches `review/perf-and-skeptic
   each; findPath partial results that stop at other polygons are held by their distance
   to the end; the walkability check of findStraightPath steps past a ray along a wall
   at 45 degrees (test of the seed-8 leg); crossings compared one by one under the
-  design's rules; `tileInUnits` and a test of `tileFromFloat` at other scales.
+  design's rules; `tileInUnits` and a test of `tileFromFloat` at other scales; two
+  oracle tests that failed under seeds 12 and 23 were in error and are fixed (see
+  `doc/TESTING.md`). Every other test passes on seeds 0 to 31, Debug and ReleaseSafe.
 - open, for the author: five cases need a tolerance or rule the design does not state
   and fail under some seeds of 1 to 31 (`doc/TESTING.md` lists them with their seeds):
   raycast's cost on grazing hits, moveAlongSurface's visited list at a shared-edge

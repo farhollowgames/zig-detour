@@ -106,7 +106,14 @@ end within rounding, and the test holds their distances to the end within
 `2 T` of each other instead. With the crossing options, the crossings are
 compared one by one under the rules of the design rather than as one line.
 A random point on one polygon was held to the polygon's interior, where the
-design allows it within 1 mm of the polygon (seed 12).
+design allows it within 1 mm of the polygon (seed 12). Two comparisons with the original
+were in error too. A damaged tile went to the original as the port had left
+it after adding it: adding a tile moves each off-mesh connection's start
+vertex onto the mesh, and where the damage made that vertex a polygon's too,
+the original read a different polygon (seed 23); the original now gets the
+tile as damaged. A ray from a start on its polygon's edge that leaves the
+polygon misses it, and both sides give no polygon, where the test expected
+the start polygon (seed 12).
 
 Queries on separate `NavMeshQuery` values over one shared `NavMesh` give the
 same bytes on 1, 2 and many threads, the way the original documents its use

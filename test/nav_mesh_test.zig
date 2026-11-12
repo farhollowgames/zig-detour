@@ -2036,17 +2036,23 @@ test "addTile: damaged tiles are refused, or taken as the original takes them" {
             const len = damageTile(damaged, random);
             const bytes = damaged[0..len];
             const ask_original = originalStopsAtHeader(&pair.nav, bytes);
+            // The tile as damaged, for the original: adding it writes to it,
+            // moving each off-mesh connection's start vertex onto the mesh,
+            // and a damaged connection's vertex can be a polygon's too.
+            const unchanged = try gpa.alignedAlloc(u8, .@"4", len);
+            try pair.kept.append(gpa, unchanged);
+            @memcpy(unchanged, bytes);
 
             var actual_ref: TileRef = 0xdead;
             const actual = pair.nav.addTile(bytes, .{}, 0, &actual_ref);
             if (actual.failed) refused += 1;
 
-            if (ask_original or (actual.succeeded and originalTakes(bytes))) {
+            if (ask_original or (actual.succeeded and originalTakes(unchanged))) {
                 const allocation = reference.ref_alloc(@max(len, 1), .perm) orelse
                     return error.OutOfMemory;
                 const original_copy: [*]u8 = @ptrCast(allocation);
                 try pair.reference_kept.append(gpa, original_copy);
-                @memcpy(original_copy[0..len], bytes);
+                @memcpy(original_copy[0..len], unchanged);
                 var expected_ref: TileRef = 0xdead;
                 const expected = reference.ref_nav_mesh_add_tile(
                     pair.reference_nav,
