@@ -1,19 +1,20 @@
 # zig-detour
 
-Tracks recastnavigation 1.6.0 (Detour, DetourCrowd, DetourTileCache) · Zig 0.17 ·
-[status](STATUS.md)
-
-## What it is
-
-A Zig port of Detour, DetourCrowd and DetourTileCache, the navigation mesh
-runtime of [recastnavigation](#licence-and-references). It holds navigation
-meshes in tiles and answers questions about them, moves crowds of agents
-along paths, and rebuilds tiles around obstacles at run time. It is pure Zig,
-with no dependencies beyond the standard library.
+Ported from recastnavigation 1.6.0 (`9f4ce64`): Detour, DetourCrowd and
+DetourTileCache · Zig 0.17.0 · [status](STATUS.md)
 
 This port is not affiliated with or reviewed by the original authors. Its
 code was written with AI assistance for Farhollow Games, and is only machine
 verified. See [the tests](doc/TESTING.md) and [parity with the original](doc/parity.md).
+
+## What it is
+
+A Zig port of Detour, DetourCrowd and DetourTileCache, the navigation mesh
+runtime of Mikko Mononen's recastnavigation. It holds navigation meshes in
+tiles and answers questions about them, moves crowds of agents along paths,
+and rebuilds tiles around obstacles at run time. It is pure Zig, with no
+dependencies beyond the standard library. The original is listed under
+[References](#references).
 
 ## Features
 
@@ -38,7 +39,7 @@ verified. See [the tests](doc/TESTING.md) and [parity with the original](doc/par
 zig fetch --save git+https://github.com/farhollowgames/zig-detour#v0.1.0
 ```
 
-`v0.1.0` is the latest release.
+`v0.1.0` is the latest release. The package needs Zig 0.17.0.
 
 In `build.zig`:
 
@@ -47,14 +48,16 @@ const detour = b.dependency("detour", .{ .target = target, .optimize = optimize 
 exe.root_module.addImport("detour", detour.module("detour"));
 ```
 
+### Build options
+
 The original's compile-time switches are build options, passed where the
 dependency is declared, such as `.polyref64 = true`:
 
 | option | original | effect |
 | --- | --- | --- |
-| `polyref64` | `DT_POLYREF64` | polygon and tile references of 64 bits instead of 32 |
-| `virtual-query-filter` | `DT_VIRTUAL_QUERYFILTER` | a query filter can replace its pass and cost functions |
-| `fast-math` | `RC_FAST_MATH` | no checks for infinite and NaN inputs |
+| `polyref64` | `DT_POLYREF64` | polygon and tile references of 64 bits instead of 32; off by default |
+| `virtual-query-filter` | `DT_VIRTUAL_QUERYFILTER` | a query filter can replace its pass and cost functions; off by default |
+| `fast-math` | `RC_FAST_MATH` | no checks for infinite and NaN inputs; off by default |
 
 ## Use
 
@@ -142,52 +145,81 @@ The reasons are in [`doc/parity.md`](doc/parity.md).
 - Sorting is stable where the original's `qsort` may order equal items any
   way.
 
-## Not included
+## Left out
 
-The parts of the original that are left out, each with what takes its place,
-are listed in [`STATUS.md`](STATUS.md#left-out).
+Nothing upstream does is missing. The names that have no function of their
+own in the port, each with what takes its place, are listed in
+[`STATUS.md`](STATUS.md#left-out). In short:
 
-## Testing and benchmarks
+- The `dtAlloc*` and `dtFree*` functions of every object, and the
+  `DetourAlloc.h` hooks: a value is declared where the caller wants it and
+  readied with `init` and `deinit`, and every function that allocates takes
+  a `std.mem.Allocator`.
+- Virtual destructors of interfaces that own no memory.
+- `DetourCommon.h` and `DetourMath.h` helpers the language has
+  (`std.mem.swap`, `@byteSwap`, `@sqrt` and the like), and `DetourAssert.h`
+  (`std.debug.assert` and the panic handler).
+- DebugUtils' drawing and dump helpers, and RecastDemo's sample code, which
+  are not part of the three libraries.
+
+## Tests
 
 `zig build test` runs 368 tests, each with every build switch off and with
 every one on. They compare every returned value and every byte written by the
-original and the port on the same inputs. The integer variant is held to the
-float port within the tolerances its design states. RecastDemo's
-`undulating.obj` lies 5 km from the origin, where a float's own rounding is
-half a millimetre, so it is compared with the float port only after a move to
-near the origin; at its own place the integer variant is checked against
-itself. `-Dfuzz-seed=<n>` moves the seeded tests to other inputs.
-
-Port time against original time, one core:
-
-| feature | port vs original |
-| --- | ---: |
-| `NavMeshQuery.findPath` | 9% faster |
-| `NavMeshQuery.raycast` | 28% faster |
-| `Crowd.update`, 128 agents | 3% faster |
-| `NavMesh.addTile + removeTile` | 10% slower |
-| `TileCache.addObstacle + removeObstacle + update` | 8% slower |
-
-The integer queries are 7% to 68% slower than the float port's (`findPath`
-9%, `raycast` 68%).
-
-AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
-`-O3`; each row is the best median of three runs.
+original and the port on the same inputs: RecastDemo's meshes, hand-made
+meshes for the edge cases, and seeded random points, paths, agents, obstacles
+and tiles. The integer variant is held to the float port within the
+tolerances its design states. RecastDemo's `undulating.obj` lies 5 km from
+the origin, where a float's own rounding is half a millimetre, so it is
+compared with the float port only after a move to near the origin; at its
+own place the integer variant is checked against itself.
+`-Dfuzz-seed=<n>` moves the seeded tests to other inputs.
 
 - [`doc/TESTING.md`](doc/TESTING.md): how the tests compare the port with
   the original, and what this repository's tests cover.
-- [`doc/BENCHMARKS.md`](doc/BENCHMARKS.md): ratios and full tables: every
-  row, the flags on both sides, the biases and the command.
+- [`doc/parity.md`](doc/parity.md): where the port differs from the
+  original, and why.
 
-## Licence and references
+## Speed
 
-zlib licence, the original's ([`LICENSE`](LICENSE)). The original's licence
-and copyright notice are kept in `LICENSE` as they are:
-"Copyright (c) 2009 Mikko Mononen memon@inside.org".
+Port time against original time, one core, on RecastDemo's `nav_test.obj`:
+
+| feature | time, port / original | port vs original |
+| --- | ---: | ---: |
+| `NavMeshQuery.findPath` | 0.91 | 9% faster |
+| `NavMeshQuery.raycast` | 0.72 | 28% faster |
+| `Crowd.update`, 128 agents | 0.97 | 3% faster |
+| `NavMesh.addTile + removeTile` | 1.10 | 10% slower |
+| `TileCache.addObstacle + removeObstacle + update` | 1.08 | 8% slower |
+
+The slowest rows of the full table are geometry helpers of a few
+nanoseconds, `intersectSegmentPoly2d` the slowest (2.10, 110% slower), then
+`TileCache.queryTiles` (23% slower), `ObstacleAvoidanceQuery.addCircle +
+addSegment + reset` (22% slower) and `navMeshDataSwapEndian` (15% slower); each takes the original's
+steps, and the cause is not found yet. The integer queries are 7% to 68%
+slower than the float port's (`findPath` 9%, `raycast` 68%).
+
+AMD Ryzen 9 9950X3D, one core, Linux 7.3, Zig 0.17.0 ReleaseFast against
+Clang 22.1.8 `-O3`, every build switch off; each side's best median of three
+runs; a load average under 3 at the start, raised to 20 to 26 by other work.
+
+- [`doc/BENCHMARKS.md`](doc/BENCHMARKS.md): every row, the flags on both
+  sides, the biases and the command.
+
+## Licence
+
+zlib licence, the original's ([`LICENSE`](LICENSE)). zig-detour is an
+altered version of Detour, DetourCrowd and DetourTileCache: the code is
+rewritten in Zig, with its own interface. The original's licence and its
+notice, "Copyright (c) 2009 Mikko Mononen memon@inside.org", are kept in
+`LICENSE` as they are, beside "Copyright (c) 2026 Farhollow Games".
+
+## References
 
 - [recastnavigation](https://github.com/recastnavigation/recastnavigation),
   the original, by [Mikko Mononen](https://github.com/memononen) and the
-  recastnavigation contributors.
+  recastnavigation contributors, tag `v1.6.0` (`9f4ce64`), fetched as a lazy
+  dependency for the tests and the benchmark only.
 - [recastnav.com](https://recastnav.com), its documentation.
 
 Made by Farhollow Games for the Loomwork Engine.
