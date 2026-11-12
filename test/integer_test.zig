@@ -675,10 +675,6 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
         }
     }
     try tally.expectEnough("findNearestPoly");
-    // Few cases are decided by a polygon at the border: 11 to 22 of about
-    // 1600 stable cases over seeds 0 to 6. Ties: 0 to 2.
-    try testing.expect(border_cases * 64 <= tally.stable);
-    try testing.expect(ties <= 4);
     std.debug.print("findNearestPoly: {d} stable cases, {d} at the box's border " ++
         "(at most {d:.2} cells off), {d} ties\n", .{
         tally.stable,
@@ -686,6 +682,10 @@ test "integer findNearestPoly: the same polygon and over-flag, the point within 
         widest_gap,
         ties,
     });
+    // Few cases are decided by a polygon at the border: at most 29 of 1598
+    // stable cases over seeds 0 to 31 (seed 15). Ties: at most 2 (seed 0).
+    try testing.expect(border_cases * 50 <= tally.stable);
+    try testing.expect(ties * 500 <= tally.stable);
 }
 
 /// Collects the references `queryPolygons` hands back.
@@ -876,10 +876,6 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
         }
     }
     try testing.expect(compared >= case_count_min);
-    // Over seeds 0 to 6, 48 to 97 polygons differ, in 31 to 41 of up to
-    // 1200 cases.
-    try testing.expect(border_cases * 24 <= compared);
-    try testing.expect(border_differences * 10 <= compared);
     std.debug.print("queryPolygons: {d} cases, {d} polygons differ at the border " ++
         "(at most {d:.2} cells off), in {d} cases\n", .{
         compared,
@@ -887,6 +883,10 @@ test "integer queryPolygons: the same polygons but those whose tree box lies at 
         widest_gap,
         border_cases,
     });
+    // Over seeds 0 to 31, at most 106 polygons differ (seed 11), in at most
+    // 50 of 1200 cases (seed 23).
+    try testing.expect(border_cases * 20 <= compared);
+    try testing.expect(border_differences * 10 <= compared);
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,6 +1067,21 @@ fn corridorCost(
     return cost;
 }
 
+/// How far apart, in millimetres, the distances from `target` to the
+/// nearest node of polygon `float_last` and to that of `last` lie, in the
+/// float port's node pool after a search: the two partial results' ends.
+fn nearestGap(pair: *Pair, target: [3]f32, float_last: PolyRef, last: PolyRef) !f64 {
+    var reach: [2]f64 = undefined;
+    for ([_]PolyRef{ float_last, last }, &reach) |ref, *d| {
+        var nodes: [4]*detour.Node = undefined;
+        const count = pair.float_query.node_pool.findNodes(ref, &nodes);
+        if (count == 0) return error.TestUnexpectedResult;
+        d.* = std.math.inf(f64);
+        for (nodes[0..count]) |node| d.* = @min(d.*, distance(node.pos, target) * scale);
+    }
+    return @abs(reach[1] - reach[0]);
+}
+
 const PathAnswer = struct {
     status: u32,
     path: [result_count_max]PolyRef,
@@ -1149,6 +1164,8 @@ fn integerPath(
 test "integer findPath and the sliced search: the same status, the same corridor or one as cheap" {
     var tally: Tally = .{};
     var same_corridor: usize = 0;
+    var other_ends: usize = 0;
+    var widest_end_gap: f64 = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x70617468));
     const random = prng.random();
     var expected: PathAnswer = undefined;
@@ -1180,6 +1197,26 @@ test "integer findPath and the sliced search: the same status, the same corridor
                 same_corridor += 1;
                 continue;
             }
+            const status: Status = @bitCast(expected.status);
+            const float_last = expected.path[expected.count -| 1];
+            const last = actual.path[actual.count -| 1];
+            if (status.partial_result and float_last != last) {
+                // A partial result leads to the node nearest the end. Two
+                // sides that stop at other polygons found two nodes as near
+                // within rounding, as two corridors can cost the same: the
+                // float port must have reached both, and neither corridor's
+                // cost says anything of the other's.
+                floatPath(pair, mode, start, end, @splat(0), &filters.float, &near);
+                const gap = try nearestGap(pair, metres(end.pos), float_last, last);
+                if (gap > 2 * tolerance) {
+                    std.debug.print("partial results: their ends lie {d:.3} mm apart " ++
+                        "in distance to the target, mode {t}\n", .{ gap, mode });
+                    return error.TestOutsideTolerance;
+                }
+                widest_end_gap = @max(widest_end_gap, gap);
+                other_ends += 1;
+                continue;
+            }
             // Another corridor: it must cost the same, by one evaluator.
             const from = metres(start.pos);
             const to = metres(end.pos);
@@ -1208,8 +1245,17 @@ test "integer findPath and the sliced search: the same status, the same corridor
         }
     }
     try tally.expectEnough("findPath");
-    // Most stable cases find the very same corridor.
-    if (same_corridor * 10 < tally.stable * 9) {
+    std.debug.print("findPath: {d} stable cases, {d} the same corridor, {d} partial results " ++
+        "ending elsewhere (at most {d:.3} mm apart)\n", .{
+        tally.stable,
+        same_corridor,
+        other_ends,
+        widest_end_gap,
+    });
+    // Nearly every stable case finds the very same corridor: at most 2 of
+    // about 1200 do not over seeds 0 to 31 (seeds 6, 10, 20 and 29), each a
+    // partial result ending elsewhere.
+    if ((tally.stable - same_corridor) * 200 > tally.stable) {
         std.debug.print("findPath: {d} of {d} stable cases found the same corridor\n", .{
             same_corridor,
             tally.stable,
@@ -1392,8 +1438,10 @@ fn shorterThroughCorridor(
 }
 
 /// Whether the float port's ray from `a` to `b` meets no wall. A ray that
-/// runs through a corner of the float path can stop on that vertex; the
-/// check then goes on from just past it, on the same floor.
+/// runs through a vertex, such as a corner of either path, can stop on it,
+/// and a ray that runs along a wall can stop where it meets it; the check
+/// then goes on from just past the vertex or the wall's far end, on the
+/// same floor, and fails where no floor is there.
 fn walkable(
     pair: *Pair,
     filter: *const detour.QueryFilter,
@@ -1407,7 +1455,7 @@ fn walkable(
     var visited: [result_count_max]PolyRef = undefined;
     var ref = start_ref;
     var from: V = a;
-    for (0..float_corners.len + 1) |_| {
+    for (0..result_count_max) |_| {
         var hit: detour.RaycastHit = .{
             .t = 0,
             .hit_normal = @splat(0),
@@ -1423,11 +1471,7 @@ fn walkable(
         // A corner stands at a vertex, where the ray can stop on the wall.
         const short: f64 = @max(@abs(b[0] - at[0]), @abs(b[2] - at[2])) * scale;
         if (short <= tolerance) return true;
-        const corner: V = for (float_corners) |c| {
-            const dx: f64 = @abs(c[0] - at[0]) * scale;
-            const dz: f64 = @abs(c[2] - at[2]) * scale;
-            if (dx <= tolerance and dz <= tolerance) break c;
-        } else return false;
+        const corner: V = grazed(pair, &hit, at, a, b, float_corners) orelse return false;
         const rest = @as(V, b) - corner;
         const rest_length = @sqrt(rest[0] * rest[0] + rest[2] * rest[2]);
         if (rest_length <= step_past) return true;
@@ -1440,6 +1484,77 @@ fn walkable(
         from = point;
     }
     return false;
+}
+
+/// What the float port's ray from `a` to `b`, stopped at `at`, grazed
+/// rather than met: the vertex it passes through, a corner of the float
+/// path, the leg's own start or an end of the wall it stopped on, or the
+/// far end of a wall it runs along. Null when it met a wall.
+fn grazed(
+    pair: *Pair,
+    hit: *const detour.RaycastHit,
+    at: [3]f32,
+    a: [3]f32,
+    b: [3]f32,
+    float_corners: []const [3]f32,
+) ?[3]f32 {
+    var vertices: [result_count_max + 3][3]f32 = undefined;
+    var count: usize = 0;
+    for (float_corners) |c| {
+        vertices[count] = c;
+        count += 1;
+    }
+    vertices[count] = a;
+    count += 1;
+    if (hit.path_count > 0 and hit.hit_edge_index >= 0) {
+        const found = pair.world.nav.getTileAndPolyByRefUnsafe(hit.path[hit.path_count - 1]);
+        const edge: usize = @intCast(hit.hit_edge_index);
+        vertices[count] = found.tile.verts[found.poly.verts[edge]];
+        vertices[count + 1] =
+            found.tile.verts[found.poly.verts[(edge + 1) % found.poly.vert_count]];
+        count += 2;
+    }
+    for (vertices[0..count]) |v| {
+        const dx: f64 = @abs(v[0] - at[0]) * scale;
+        const dz: f64 = @abs(v[2] - at[2]) * scale;
+        if (dx <= tolerance and dz <= tolerance) return v;
+    }
+    return alongWall(pair, hit, at, b);
+}
+
+/// Where a ray that stopped at `at` on its way to `b` runs along the wall it
+/// stopped on: the wall's end toward `b`, or `b` when the wall reaches past
+/// it. Null when the ray meets the wall at an angle, that is when `at` or
+/// `b` lies more than a position's tolerance off the wall's line. Along a
+/// wall the float port cannot tell which side of the wall's line the ray
+/// runs on, and stops it where it starts.
+fn alongWall(pair: *Pair, hit: *const detour.RaycastHit, at: [3]f32, b: [3]f32) ?[3]f32 {
+    if (hit.path_count == 0 or hit.hit_edge_index < 0) return null;
+    const found = pair.world.nav.getTileAndPolyByRefUnsafe(hit.path[hit.path_count - 1]);
+    const edge: usize = @intCast(hit.hit_edge_index);
+    const v0 = found.tile.verts[found.poly.verts[edge]];
+    const v1 = found.tile.verts[found.poly.verts[(edge + 1) % found.poly.vert_count]];
+    var plane: [4][2]f64 = undefined;
+    const points = planeOf(f32, &.{ v0, v1, at, b }, &plane);
+    const wall = [2]f64{ points[1][0] - points[0][0], points[1][1] - points[0][1] };
+    const wall_length = std.math.hypot(wall[0], wall[1]);
+    if (wall_length == 0) return null;
+    for (points[2..]) |p| {
+        const across = (p[0] - points[0][0]) * wall[1] - (p[1] - points[0][1]) * wall[0];
+        if (@abs(across) / wall_length > tolerance) return null;
+    }
+    // How far along the leg from `at` to `b` each end of the wall lies.
+    const leg = [2]f64{ points[3][0] - points[2][0], points[3][1] - points[2][1] };
+    const leg_sqr = leg[0] * leg[0] + leg[1] * leg[1];
+    if (leg_sqr == 0) return null;
+    var along: [2]f64 = undefined;
+    for (points[0..2], &along) |p, *s| {
+        s.* = ((p[0] - points[2][0]) * leg[0] + (p[1] - points[2][1]) * leg[1]) / leg_sqr;
+    }
+    const far = @max(along[0], along[1]);
+    if (far <= 0) return null;
+    if (far >= 1) return b;
+    return if (along[0] > along[1]) v0 else v1;
 }
 
 /// Whether polygon `ref` of the integer mesh has a vertex within tolerance
@@ -1474,11 +1589,242 @@ fn soleMatch(line: []const [3]f32, corner: [3]i32) ?usize {
     return found;
 }
 
+/// Whether the float polylines `a` and `b` lie within a position's
+/// tolerance of each other in the xz plane, each point of one near the
+/// other.
+fn sameLine(a: []const [3]f32, b: []const [3]f32) bool {
+    for ([2][]const [3]f32{ a, b }, [2][]const [3]f32{ b, a }) |from, to| {
+        for (from) |p| {
+            // Rounded to whole millimetres: half a millimetre more.
+            if (distanceToLine(millimetres(p), to) > tolerance + 0.5) return false;
+        }
+    }
+    return true;
+}
+
+/// A vertex of a straight path: its place in millimetres, its flags and
+/// its polygon.
+const PathVertex = struct {
+    at: [3]f64,
+    flags: detour.StraightPathFlags,
+    ref: PolyRef,
+    /// Where `ref` stands in the corridor, past the vertices before it: a
+    /// corridor that turns back holds a polygon twice.
+    index: ?usize,
+
+    /// Whether the vertex can be a portal crossing: neither the start, the
+    /// end nor an off-mesh connection. A corner has no flags either.
+    fn isCrossing(self: PathVertex) bool {
+        return @as(u8, @bitCast(self.flags)) == 0;
+    }
+
+    fn near(a: PathVertex, b: PathVertex) bool {
+        return @abs(a.at[0] - b.at[0]) <= tolerance and @abs(a.at[2] - b.at[2]) <= tolerance and
+            @abs(a.at[1] - b.at[1]) <= height_tolerance;
+    }
+
+    /// Whether two vertices, one of each path, stand for the same one: the
+    /// same polygon at the same place in the corridor, so a crossing of the
+    /// same portal or a corner in the same polygon. Places are compared
+    /// elsewhere: the corners against the float corners, a crossing on its
+    /// portal, since where a leg meets its portal at a slant, a leg's error
+    /// moves the crossing along the portal by that error over the sine of
+    /// the angle between them.
+    fn sameVertex(a: PathVertex, b: PathVertex) bool {
+        return a.ref == b.ref and a.index == b.index;
+    }
+
+    fn corner(self: PathVertex) [3]i32 {
+        var p: [3]i32 = undefined;
+        for (&p, self.at) |*c, value| c.* = @intFromFloat(@round(value));
+        return p;
+    }
+};
+
+/// The float portal the crossing `vertex` of a path along `corridor` lies
+/// on, or null when its polygon is the corridor's first or not in it.
+fn crossedPortal(pair: *Pair, corridor: []const PolyRef, vertex: PathVertex) ?[2][3]f32 {
+    const k = vertex.index orelse return null;
+    if (k == 0) return null;
+    return floatPortal(&pair.world.nav, corridor[k - 1], corridor[k]);
+}
+
+/// The vertices of a straight path in millimetres, each float crossing
+/// held to its portal as the integer variant holds its own.
+fn pathVertices(
+    pair: *Pair,
+    corridor: []const PolyRef,
+    comptime T: type,
+    points: []const [3]T,
+    flags: []const detour.StraightPathFlags,
+    refs: []const PolyRef,
+    out: []PathVertex,
+) []PathVertex {
+    var cursor: usize = 0;
+    for (points, flags, refs, out[0..points.len]) |p, flag, ref, *vertex| {
+        vertex.* = .{ .at = undefined, .flags = flag, .ref = ref, .index = null };
+        if (ref != 0) {
+            if (std.mem.findScalarPos(PolyRef, corridor, cursor, ref)) |k| {
+                cursor = k;
+                vertex.index = k;
+            }
+        }
+        for (&vertex.at, p) |*c, value| {
+            c.* = if (T == f32) @as(f64, value) * scale else @floatFromInt(value);
+        }
+        if (T == f32 and vertex.isCrossing()) {
+            if (crossedPortal(pair, corridor, vertex.*)) |portal| {
+                vertex.at = clampToSegment(vertex.at, portal);
+            }
+        }
+    }
+    return out[0..points.len];
+}
+
+/// The point of the float segment `ends` nearest `p` in the xz plane, in
+/// millimetres, with the segment's height there.
+fn clampToSegment(p: [3]f64, ends: [2][3]f32) [3]f64 {
+    var a: [3]f64 = undefined;
+    var b: [3]f64 = undefined;
+    for (&a, &b, ends[0], ends[1]) |*x, *y, u, v| {
+        x.* = @as(f64, u) * scale;
+        y.* = @as(f64, v) * scale;
+    }
+    const dx = b[0] - a[0];
+    const dz = b[2] - a[2];
+    const len_sqr = dx * dx + dz * dz;
+    if (len_sqr == 0) return a;
+    const t = std.math.clamp(((p[0] - a[0]) * dx + (p[2] - a[2]) * dz) / len_sqr, 0, 1);
+    var point: [3]f64 = undefined;
+    for (&point, a, b) |*c, u, v| c.* = u + (v - u) * t;
+    return point;
+}
+
+/// Whether `path[v]` is a crossing that one path may list and the other
+/// not. Where a crossing and the vertex beside it are one point, each path
+/// keeps one of them: the float port counts points within 1/16384 of a
+/// unit as one, the integer variant only the same point, so two points a
+/// rounding apart are one on one side and two on the other. A crossing at
+/// an end of its portal may be one point with a corner there, and a leg
+/// through a portal's end can cross it on one path and pass beside it on
+/// the other. A path that starts or ends on a portal may list its crossing
+/// or not, and the float port finds no crossing where the leg runs within
+/// 1e-6 of parallel to the portal, the integer variant only where it is.
+fn mayBeOneSided(
+    pair: *Pair,
+    corridor: []const PolyRef,
+    path: []const PathVertex,
+    v: usize,
+) bool {
+    const vertex = path[v];
+    if (!vertex.isCrossing()) return false;
+    const portal = crossedPortal(pair, corridor, vertex) orelse return false;
+    for (portal) |end| {
+        const dx = @abs(@as(f64, end[0]) * scale - vertex.at[0]);
+        const dz = @abs(@as(f64, end[2]) * scale - vertex.at[2]);
+        if (dx <= tolerance and dz <= tolerance) return true;
+    }
+    for ([_]PathVertex{ path[0], path[path.len - 1] }) |end| {
+        const on = clampToSegment(end.at, portal);
+        if (std.math.hypot(on[0] - end.at[0], on[2] - end.at[2]) <= tolerance) return true;
+    }
+    for ([_]usize{ v -| 1, @min(v + 1, path.len - 1) }) |beside| {
+        if (beside != v and path[beside].near(vertex)) return true;
+    }
+    return false;
+}
+
+/// Compares the vertices of the float and the integer straight path with
+/// crossings, in order: at each vertex both have, the same flags and the
+/// same polygon, or for a vertex several portals share either polygon that
+/// holds it. A crossing only one side lists must be one `mayBeOneSided`
+/// allows, and each integer crossing, a vertex not at one of `corners`,
+/// must lie on its portal. Returns how many did, and how many vertices named another
+/// polygon at a shared vertex.
+fn compareCrossings(
+    pair: *Pair,
+    corridor: []const PolyRef,
+    float_vertices: []const PathVertex,
+    vertices: []const PathVertex,
+    corners: []const [3]i32,
+) !struct { one_sided: usize, shared: usize } {
+    var one_sided: usize = 0;
+    var shared: usize = 0;
+    var f: usize = 0;
+    var i: usize = 0;
+    errdefer {
+        for (float_vertices) |v| std.debug.print("  float {any}\n", .{v});
+        for (vertices) |v| std.debug.print("  integer {any}\n", .{v});
+    }
+    // Each integer crossing, a vertex that is not one of the corners, lies
+    // on the portal it crosses.
+    for (vertices) |vertex| {
+        if (!vertex.isCrossing()) continue;
+        const corner = for (corners) |c| {
+            const dx = @abs(@as(f64, @floatFromInt(c[0])) - vertex.at[0]);
+            const dz = @abs(@as(f64, @floatFromInt(c[2])) - vertex.at[2]);
+            if (dx <= tolerance and dz <= tolerance) break true;
+        } else false;
+        if (corner) continue;
+        const portal = crossedPortal(pair, corridor, vertex) orelse
+            return error.TestUnexpectedResult;
+        const on = clampToSegment(vertex.at, portal);
+        const dx = on[0] - vertex.at[0];
+        const dz = on[2] - vertex.at[2];
+        if (@sqrt(dx * dx + dz * dz) > tolerance + linkLimitSlack(pair, corridor)) {
+            std.debug.print("a crossing {d:.2} mm off its portal\n", .{@sqrt(dx * dx + dz * dz)});
+            return error.TestOutsideTolerance;
+        }
+    }
+    while (f < float_vertices.len or i < vertices.len) {
+        errdefer std.debug.print("  vertex {d} of {d} on the float path, {d} of {d}\n", .{
+            f,
+            float_vertices.len,
+            i,
+            vertices.len,
+        });
+        if (f < float_vertices.len and i < vertices.len) {
+            const a = float_vertices[f];
+            const b = vertices[i];
+            // A vertex several portals share names whichever of their
+            // polygons the funnel turned at; both must hold it.
+            const shared_vertex = !a.sameVertex(b) and a.near(b) and
+                for ([_]PolyRef{ a.ref, b.ref }) |ref| {
+                    if (ref == 0 or std.mem.findScalar(PolyRef, corridor, ref) == null) break false;
+                    if (!hasVertexAt(pair, ref, b.corner())) break false;
+                } else true;
+            if (a.sameVertex(b) or shared_vertex) {
+                try testing.expectEqual(a.flags, b.flags);
+                shared += @intFromBool(shared_vertex);
+                f += 1;
+                i += 1;
+                continue;
+            }
+        }
+        if (f < float_vertices.len and mayBeOneSided(pair, corridor, float_vertices, f)) {
+            one_sided += 1;
+            f += 1;
+            continue;
+        }
+        if (i < vertices.len and mayBeOneSided(pair, corridor, vertices, i)) {
+            one_sided += 1;
+            i += 1;
+            continue;
+        }
+        return error.TestUnexpectedResult;
+    }
+    return .{ .one_sided = one_sided, .shared = shared };
+}
+
 test "integer findStraightPath: on one corridor the two paths lie within tolerance of each other" {
     var tally: Tally = .{};
     var shared_vertex_corners: usize = 0;
     var longer_float_paths: usize = 0;
     var longest_surplus: f64 = 0;
+    var crossing_cases: usize = 0;
+    var one_sided_crossings: usize = 0;
+    var crossing_shared_vertices: usize = 0;
+    var float_disagrees: usize = 0;
     var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x73747261));
     const random = prng.random();
     var corridor: PathAnswer = undefined;
@@ -1567,6 +1913,24 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
             // where the integer one stops at the end, so with crossings both
             // paths are held against the float corners alone.
             const corners_only = !options.area_crossings and !options.all_crossings;
+            // With crossings: the float port's vertices, each crossing held to
+            // its portal as the integer variant holds its own.
+            var float_vertices: [result_count_max]PathVertex = undefined;
+            const float_with = pathVertices(
+                pair,
+                path,
+                f32,
+                float_corners[0..float_count],
+                float_flags[0..float_count],
+                float_refs[0..float_count],
+                &float_vertices,
+            );
+            var float_with_line: [result_count_max][3]f32 = undefined;
+            for (float_with, float_with_line[0..float_with.len]) |vertex, *point| {
+                for (point, vertex.at) |*c, value| c.* = @floatCast(value / scale);
+            }
+            // The float corners alone: the float port extends a crossing past
+            // the end of its portal.
             var float_line = float_corners[0..float_count];
             if (!corners_only) {
                 var only_count: usize = 0;
@@ -1582,12 +1946,32 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
                 );
                 float_line = float_corners[0..only_count];
             }
+            // The integer corners alone, the same way.
+            var only_corners: [result_count_max][3]i32 = undefined;
+            var only_refs: [result_count_max]PolyRef = undefined;
+            var integer_line: []const [3]i32 = corners[0..count];
+            var integer_refs: []const PolyRef = refs[0..count];
+            if (!corners_only) {
+                var only_count: usize = 0;
+                _ = pair.query.findStraightPath(
+                    start.pos,
+                    end.pos,
+                    path,
+                    &only_corners,
+                    null,
+                    &only_refs,
+                    &only_count,
+                    .{},
+                );
+                integer_line = only_corners[0..only_count];
+                integer_refs = only_refs[0..only_count];
+            }
             var line: [result_count_max][3]f32 = undefined;
-            for (corners[0..count], line[0..count]) |corner, *point| point.* = metres(corner);
+            for (integer_line, line[0..integer_line.len]) |corner, *point| point.* = metres(corner);
             var off: f64 = 0;
-            for (corners[0..count]) |corner| off = @max(off, distanceToLine(corner, float_line));
+            for (integer_line) |corner| off = @max(off, distanceToLine(corner, float_line));
             for (float_line) |float_corner| {
-                const back = distanceToLine(millimetres(float_corner), line[0..count]);
+                const back = distanceToLine(millimetres(float_corner), line[0..integer_line.len]);
                 off = @max(off, back - 0.5);
             }
             // Links whose limits are a step apart move portal ends by a
@@ -1603,21 +1987,49 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
                     &filters.float,
                     path,
                     float_line,
-                    corners[0..count],
-                    refs[0..count],
+                    integer_line,
+                    integer_refs,
                 )) {
                     longer_float_paths += 1;
                     var float_plane: [result_count_max][2]f64 = undefined;
                     var plane: [result_count_max][2]f64 = undefined;
                     const surplus = pathLength(planeOf(f32, float_line, &float_plane)) -
-                        pathLength(planeOf(i32, corners[0..count], &plane));
+                        pathLength(planeOf(i32, integer_line, &plane));
                     longest_surplus = @max(longest_surplus, surplus);
                     continue;
                 }
                 std.debug.print("the paths lie {d:.2} mm apart\n", .{off});
                 return error.TestOutsideTolerance;
             }
-            if (!corners_only) continue;
+            if (!corners_only) {
+                crossing_cases += 1;
+                // On a corridor that turns back along one line, the float
+                // port's corners with crossings can differ from its corners
+                // without: it gives no one answer to compare with.
+                if (!sameLine(float_line, float_with_line[0..float_with.len])) {
+                    float_disagrees += 1;
+                    continue;
+                }
+                var vertices: [result_count_max]PathVertex = undefined;
+                const outcome = try compareCrossings(
+                    pair,
+                    path,
+                    float_with,
+                    pathVertices(
+                        pair,
+                        path,
+                        i32,
+                        corners[0..count],
+                        flags[0..count],
+                        refs[0..count],
+                        &vertices,
+                    ),
+                    integer_line,
+                );
+                one_sided_crossings += outcome.one_sided;
+                crossing_shared_vertices += outcome.shared;
+                continue;
+            }
             for (corners[0..count], 0..) |corner, c| {
                 errdefer std.debug.print("  integer corner {d} of {d}\n", .{ c, count });
                 // A corner both have, and only one on either path lies
@@ -1650,15 +2062,66 @@ test "integer findStraightPath: on one corridor the two paths lie within toleran
         }
     }
     try tally.expectEnough("findStraightPath");
-    // A longer float path is a rounding accident of the float port: rare,
-    // 5 to 10 of 1200 over seeds 0 to 6. Shared-vertex corners: 11 to 24.
-    try testing.expect(longer_float_paths * 50 <= tally.stable);
-    try testing.expect(shared_vertex_corners * 40 <= tally.stable);
+    std.debug.print("findStraightPath with crossings: {d} cases, {d} crossings on one path " ++
+        "only, {d} vertices at a vertex several portals share, {d} where " ++
+        "the float port's corners change with the option\n", .{
+        crossing_cases,
+        one_sided_crossings,
+        crossing_shared_vertices,
+        float_disagrees,
+    });
     std.debug.print(
         "findStraightPath: {d} stable cases, {d} corners at a vertex several portals share, " ++
             "{d} longer float paths, the float path at most {d:.1} mm longer\n",
         .{ tally.stable, shared_vertex_corners, longer_float_paths, longest_surplus },
     );
+    // A longer float path is a rounding accident of the float port: rare,
+    // at most 13 of 1200 over seeds 0 to 31 (seeds 19 and 26).
+    // Shared-vertex corners: at most 25 (seeds 13 and 30). With the crossing
+    // options, of about 800 cases: crossings on one path only at most 33
+    // (seed 31), vertices several portals share at most 17 (seed 23), and
+    // float corners that change with the option at most 2 (seed 0).
+    try testing.expect(longer_float_paths * 80 <= tally.stable);
+    try testing.expect(shared_vertex_corners * 45 <= tally.stable);
+    try testing.expect(one_sided_crossings * 22 <= crossing_cases);
+    try testing.expect(crossing_shared_vertices * 40 <= crossing_cases);
+    try testing.expect(float_disagrees * 250 <= crossing_cases);
+}
+
+test "integer findStraightPath's walkability check: a leg along a wall at 45 degrees" {
+    // Corners of a float path on the undulating level (fuzz seed 8, case
+    // 35), and a leg of the integer path on the same corridor. The leg runs
+    // exactly along a wall at 45 degrees, and the float port's ray along it
+    // stops where it starts, and again just past its start.
+    const float_corners = [_][3]f32{
+        .{ 91.284, -2.233, 75.222 },
+        .{ 85.506004, 1.94522, 72.15201 },
+        .{ 85.106, 1.94522, 71.75201 },
+        .{ 80.40797, -1.6390936, 66.75201 },
+        .{ 56.706, 3.1452203, 47.552 },
+        .{ 56.706, -2.45478, 40.652 },
+        .{ 33.388, -1.411, 41.515 },
+    };
+    const pair = &(try pairs())[3];
+    const filter: detour.QueryFilter = .{};
+    const a: [3]f32 = .{ 85.506, 1.945, 72.152 };
+    const b: [3]f32 = .{ 85.106, 1.945, 71.752 };
+    var ref: PolyRef = 0;
+    var point = a;
+    _ = pair.float_query.findNearestPoly(a, .{ 0.01, 0.5, 0.01 }, &filter, &ref, &point, null);
+    try testing.expect(ref != 0);
+    var visited: [result_count_max]PolyRef = undefined;
+    var hit: detour.RaycastHit = .{
+        .t = 0,
+        .hit_normal = @splat(0),
+        .hit_edge_index = 0,
+        .path = &visited,
+        .path_count = 0,
+        .path_cost = 0,
+    };
+    try testing.expect(pair.float_query.raycast(ref, a, b, &filter, .{}, &hit, 0).succeeded);
+    try testing.expectEqual(0, hit.t);
+    try testing.expect(walkable(pair, &filter, ref, a, b, &float_corners));
 }
 
 // ---------------------------------------------------------------------------
@@ -2310,9 +2773,12 @@ test "integer findDistanceToWall: the distance, wall point and normal within tol
         }
     }
     try tally.expectEnough("findDistanceToWall");
-    // Ties: 0 to 1 over seeds 0 to 6.
-    std.debug.print("findDistanceToWall: {d} ties between walls\n", .{ties});
-    try testing.expect(ties <= 2);
+    std.debug.print("findDistanceToWall: {d} stable cases, {d} ties between walls\n", .{
+        tally.stable,
+        ties,
+    });
+    // Ties: at most 4 of 1200 over seeds 0 to 31 (seed 10).
+    try testing.expect(ties * 300 <= tally.stable);
 }
 
 // ---------------------------------------------------------------------------
@@ -2731,9 +3197,8 @@ test "skeptic: integer findNearestPoly on unstable cases gives one of the float 
             // The exemptions the stable cases have.
             if (ref != 0 and try boxesDiffer(pair, p, half_extents, &filters) and
                 try nearBorder(pair, ref, p, half_extents)) continue;
-            if (ref != 0 and answers[0].ref != 0 and try equallyNear(pair, p, answers[0].ref, ref)) {
-                continue;
-            }
+            if (ref != 0 and answers[0].ref != 0 and
+                try equallyNear(pair, p, answers[0].ref, ref)) continue;
             unmatched += 1;
             std.debug.print("findNearestPoly level {d} case {d}: integer ref {d} status 0x{x}, " ++
                 "float refs {d} {d} {d} {d} {d}\n", .{
@@ -2750,7 +3215,7 @@ test "skeptic: integer findNearestPoly on unstable cases gives one of the float 
     try testing.expectEqual(@as(usize, 0), unmatched);
 }
 
-test "skeptic: integer raycast and moveAlongSurface on unstable cases give one of the float answers" {
+test "skeptic: integer raycast, moveAlongSurface on unstable cases give one of the float answers" {
     var unstable_rays: usize = 0;
     var unmatched_rays: usize = 0;
     var unstable_moves: usize = 0;
@@ -2805,8 +3270,8 @@ test "skeptic: integer raycast and moveAlongSurface on unstable cases give one o
                 }
                 if (!matched) {
                     unmatched_rays += 1;
-                    std.debug.print("raycast level {d} case {d}: integer {d} polygons, edge {d}, " ++
-                        "hit {}; float {d} polygons, edge {d}, hit {}\n", .{
+                    std.debug.print("raycast level {d} case {d}: integer {d} polygons, " ++
+                        "edge {d}, hit {}; float {d} polygons, edge {d}, hit {}\n", .{
                         level,            case,          hit.path_count, hit.hit_edge_index,
                         !hit.t.isNever(), rays[0].count, rays[0].edge,   rays[0].hit,
                     });

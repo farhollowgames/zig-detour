@@ -8,8 +8,10 @@
 //! boxes of the bounding-volume tree are recomputed from the integer
 //! geometry.
 //!
-//! `scale` is the number of integer units in one float unit: 1000 turns a
-//! mesh in metres into one in millimetres. A value becomes
+//! The integer unit is the millimetre, and `scale` is the number of
+//! millimetres in one float unit: 1000 for a mesh in metres, 10 for one in
+//! centimetres. The variant's fixed distances are in millimetres at every
+//! scale. A value becomes
 //! `round(f64(value) * scale)`, which is the same number on every machine,
 //! so a float tile converts to the same bytes everywhere.
 
@@ -764,6 +766,68 @@ test "tileFromFloat refuses a value outside the coordinate bound" {
     const tile = try tileFromFloat(gpa, float_tile, default_scale);
     gpa.free(tile);
     try testing.expectError(out_of_bounds, tileFromFloat(gpa, float_tile, 1e9));
+}
+
+/// `float_tile`, a tile in metres, rewritten in units of which a metre
+/// holds `per_metre`: every position, extent and agent size multiplied by
+/// it, and the tree's cells per unit divided by it.
+fn tileInUnits(float_tile: []align(4) u8, per_metre: f32) void {
+    const header: *float_nav_mesh.MeshHeader = @ptrCast(float_tile.ptr);
+    header.walkable_height *= per_metre;
+    header.walkable_radius *= per_metre;
+    header.walkable_climb *= per_metre;
+    for (&header.bounds_min, &header.bounds_max) |*low, *high| {
+        low.* *= per_metre;
+        high.* *= per_metre;
+    }
+    header.bv_quant_factor /= per_metre;
+    const layout = Layout.init(header).?;
+    const verts = blobSlice([3]f32, float_tile, layout.verts_offset, layout.vert_count);
+    const detail_verts = blobSlice(
+        [3]f32,
+        float_tile,
+        layout.detail_verts_offset,
+        layout.detail_vert_count,
+    );
+    const connections = blobSlice(
+        float_nav_mesh.OffMeshConnection,
+        float_tile,
+        layout.off_mesh_connections_offset,
+        layout.off_mesh_connection_count,
+    );
+    for (verts) |*v| {
+        for (v) |*c| c.* *= per_metre;
+    }
+    for (detail_verts) |*v| {
+        for (v) |*c| c.* *= per_metre;
+    }
+    for (connections) |*connection| {
+        for (&connection.pos) |*v| {
+            for (v) |*c| c.* *= per_metre;
+        }
+        connection.radius *= per_metre;
+    }
+}
+
+test "tileFromFloat takes a tile in other units at the scale that makes millimetres" {
+    // The integer unit is the millimetre at every scale: a tile in
+    // centimetres at 10, or in millimetres at 1, gives the bytes the tile
+    // in metres gives at 1000, so every distance the queries fix in
+    // millimetres keeps its size.
+    const gpa = testing.allocator;
+    const float_tile = try makeTestTile();
+    defer gpa.free(float_tile);
+    const expected = try tileFromFloat(gpa, float_tile, default_scale);
+    defer gpa.free(expected);
+    for ([_]f32{ 100, 1000 }) |per_metre| {
+        const other = try gpa.alignedAlloc(u8, .@"4", float_tile.len);
+        defer gpa.free(other);
+        @memcpy(other, float_tile);
+        tileInUnits(other, per_metre);
+        const tile = try tileFromFloat(gpa, other, default_scale / per_metre);
+        defer gpa.free(tile);
+        try testing.expectEqualSlices(u8, expected, tile);
+    }
 }
 
 test "tileFromFloat reports a failed allocation" {

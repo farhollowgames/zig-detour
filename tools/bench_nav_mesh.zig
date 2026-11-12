@@ -4,6 +4,7 @@
 const std = @import("std");
 const support = @import("support");
 const Bench = @import("bench.zig").Bench;
+const opaqueFn = @import("bench.zig").opaqueFn;
 
 const detour = support.detour;
 const reference = support.reference;
@@ -469,11 +470,13 @@ const Context = struct {
     }
 
     fn baselineCreateNavMeshData(context: *Context) u64 {
+        const createNavMeshData = opaqueFn(reference.ref_create_nav_mesh_data);
+        const free = opaqueFn(reference.ref_free);
         var sum: u64 = 0;
         for (context.tiles) |*tile| {
             var data: ?[*]u8 = null;
             var size: i32 = 0;
-            const built = reference.ref_create_nav_mesh_data(
+            const built = createNavMeshData(
                 &tile.input.reference_params,
                 &data,
                 &size,
@@ -483,15 +486,16 @@ const Context = struct {
             sum +%= 1;
             sum +%= bytes.len;
             sum +%= blobSum(bytes);
-            reference.ref_free(bytes.ptr);
+            free(bytes.ptr);
         }
         return sum;
     }
 
     fn portCreateNavMeshData(context: *Context) u64 {
+        const createNavMeshData = opaqueFn(detour.createNavMeshData);
         var sum: u64 = 0;
         for (context.tiles) |*tile| {
-            const bytes = detour.createNavMeshData(std.heap.c_allocator, &tile.params) catch
+            const bytes = createNavMeshData(std.heap.c_allocator, &tile.params) catch
                 continue;
             sum +%= 1;
             sum +%= bytes.len;
@@ -502,10 +506,12 @@ const Context = struct {
     }
 
     fn baselineAddAndRemoveTiles(context: *Context) u64 {
+        const addTile = opaqueFn(reference.ref_nav_mesh_add_tile);
+        const removeTile = opaqueFn(reference.ref_nav_mesh_remove_tile);
         var sum: u64 = 0;
         const nav = context.reference_empty_nav;
         for (context.tiles, context.tile_refs) |*tile, *ref| {
-            sum +%= reference.ref_nav_mesh_add_tile(
+            sum +%= addTile(
                 nav,
                 tile.reference_bytes.ptr,
                 @intCast(tile.reference_bytes.len),
@@ -524,7 +530,7 @@ const Context = struct {
             index -= 1;
             var data: ?[*]u8 = null;
             var size: i32 = 0;
-            sum +%= reference.ref_nav_mesh_remove_tile(
+            sum +%= removeTile(
                 nav,
                 context.tile_refs[index],
                 &data,
@@ -536,10 +542,12 @@ const Context = struct {
     }
 
     fn portAddAndRemoveTiles(context: *Context) u64 {
+        const addTile = opaqueFn(detour.NavMesh.addTile);
+        const removeTile = opaqueFn(detour.NavMesh.removeTile);
         var sum: u64 = 0;
         const nav = &context.empty_nav;
         for (context.tiles, context.tile_refs) |*tile, *ref| {
-            sum +%= statusSum(nav.addTile(tile.bytes, .{}, 0, ref));
+            sum +%= statusSum(addTile(nav, tile.bytes, .{}, 0, ref));
             sum +%= ref.*;
         }
         for (context.tiles) |*tile| sum +%= blobSum(tile.bytes);
@@ -547,25 +555,27 @@ const Context = struct {
         while (index > 0) {
             index -= 1;
             var data: []align(4) u8 = &.{};
-            sum +%= statusSum(nav.removeTile(context.tile_refs[index], &data));
+            sum +%= statusSum(removeTile(nav, context.tile_refs[index], &data));
             sum +%= data.len;
         }
         return sum;
     }
 
     fn baselineStoreAndRestoreTileState(context: *Context) u64 {
+        const storeTileState = opaqueFn(reference.ref_nav_mesh_store_tile_state);
+        const restoreTileState = opaqueFn(reference.ref_nav_mesh_restore_tile_state);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.tiles) |*tile| {
             const state = tile.state;
-            sum +%= reference.ref_nav_mesh_store_tile_state(
+            sum +%= storeTileState(
                 nav,
                 tile.reference_tile,
                 state.ptr,
                 @intCast(state.len),
             );
             sum +%= blobSum(state);
-            sum +%= reference.ref_nav_mesh_restore_tile_state(
+            sum +%= restoreTileState(
                 nav,
                 @constCast(tile.reference_tile),
                 state.ptr,
@@ -577,25 +587,28 @@ const Context = struct {
     }
 
     fn portStoreAndRestoreTileState(context: *Context) u64 {
+        const storeTileState = opaqueFn(detour.NavMesh.storeTileState);
+        const restoreTileState = opaqueFn(detour.NavMesh.restoreTileState);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.tiles) |*tile| {
             const state = tile.state;
-            sum +%= statusSum(nav.storeTileState(tile.tile, state));
+            sum +%= statusSum(storeTileState(nav, tile.tile, state));
             sum +%= blobSum(state);
-            sum +%= statusSum(nav.restoreTileState(tile.tile, state));
+            sum +%= statusSum(restoreTileState(nav, tile.tile, state));
             sum +%= tile.last_poly.flags;
         }
         return sum;
     }
 
     fn baselineGetTileAndPolyByRef(context: *Context) u64 {
+        const getTileAndPolyByRef = opaqueFn(reference.ref_nav_mesh_get_tile_and_poly_by_ref);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         var tile: ?*const reference.MeshTile = context.tiles[0].reference_tile;
         var poly: ?*const reference.Poly = context.tiles[0].reference_last_poly;
         for (context.poly_refs) |ref| {
-            sum +%= reference.ref_nav_mesh_get_tile_and_poly_by_ref(nav, ref, &tile, &poly);
+            sum +%= getTileAndPolyByRef(nav, ref, &tile, &poly);
             sum +%= context.referenceHeader(tile.?).user_id;
             sum +%= poly.?.flags;
         }
@@ -603,12 +616,13 @@ const Context = struct {
     }
 
     fn portGetTileAndPolyByRef(context: *Context) u64 {
+        const getTileAndPolyByRef = opaqueFn(detour.NavMesh.getTileAndPolyByRef);
         var sum: u64 = 0;
         const nav = &context.nav;
         var tile: *const detour.MeshTile = context.tiles[0].tile;
         var poly: *const detour.Poly = context.tiles[0].last_poly;
         for (context.poly_refs) |ref| {
-            sum +%= statusSum(nav.getTileAndPolyByRef(ref, &tile, &poly));
+            sum +%= statusSum(getTileAndPolyByRef(nav, ref, &tile, &poly));
             sum +%= tile.header.?.user_id;
             sum +%= poly.flags;
         }
@@ -616,98 +630,116 @@ const Context = struct {
     }
 
     fn baselineCallAlone(context: *Context) u64 {
+        const benchIdentity = opaqueFn(reference.ref_bench_identity);
         var sum: u64 = 0;
-        for (context.validity_refs) |ref| sum +%= reference.ref_bench_identity(ref);
+        for (context.validity_refs) |ref| sum +%= benchIdentity(ref);
         return sum;
     }
 
+    /// Returns its argument: what the calibration row calls.
+    fn identity(ref: PolyRef) PolyRef {
+        return ref;
+    }
+
     fn portCallAlone(context: *Context) u64 {
+        const identityCall = opaqueFn(identity);
         var sum: u64 = 0;
-        for (context.validity_refs) |ref| sum +%= ref;
+        for (context.validity_refs) |ref| sum +%= identityCall(ref);
         return sum;
     }
 
     fn baselineIsValidPolyRef(context: *Context) u64 {
+        const isValidPolyRef = opaqueFn(reference.ref_nav_mesh_is_valid_poly_ref);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.validity_refs) |ref| {
-            sum +%= @intFromBool(reference.ref_nav_mesh_is_valid_poly_ref(nav, ref));
+            sum +%= @intFromBool(isValidPolyRef(nav, ref));
         }
         return sum;
     }
 
     fn portIsValidPolyRef(context: *Context) u64 {
+        const isValidPolyRef = opaqueFn(detour.NavMesh.isValidPolyRef);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.validity_refs) |ref| {
-            sum +%= @intFromBool(nav.isValidPolyRef(ref));
+            sum +%= @intFromBool(isValidPolyRef(nav, ref));
         }
         return sum;
     }
 
     fn baselineSetAndGetPolyFlags(context: *Context) u64 {
+        const setPolyFlags = opaqueFn(reference.ref_nav_mesh_set_poly_flags);
+        const getPolyFlags = opaqueFn(reference.ref_nav_mesh_get_poly_flags);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.poly_refs, context.poly_flags) |ref, flags| {
-            sum +%= reference.ref_nav_mesh_set_poly_flags(nav, ref, flags);
+            sum +%= setPolyFlags(nav, ref, flags);
         }
         var flags: u16 = 0;
         for (context.poly_refs) |ref| {
-            sum +%= reference.ref_nav_mesh_get_poly_flags(nav, ref, &flags);
+            sum +%= getPolyFlags(nav, ref, &flags);
             sum +%= flags;
         }
         return sum;
     }
 
     fn portSetAndGetPolyFlags(context: *Context) u64 {
+        const setPolyFlags = opaqueFn(detour.NavMesh.setPolyFlags);
+        const getPolyFlags = opaqueFn(detour.NavMesh.getPolyFlags);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.poly_refs, context.poly_flags) |ref, flags| {
-            sum +%= statusSum(nav.setPolyFlags(ref, flags));
+            sum +%= statusSum(setPolyFlags(nav, ref, flags));
         }
         var flags: u16 = 0;
         for (context.poly_refs) |ref| {
-            sum +%= statusSum(nav.getPolyFlags(ref, &flags));
+            sum +%= statusSum(getPolyFlags(nav, ref, &flags));
             sum +%= flags;
         }
         return sum;
     }
 
     fn baselineSetAndGetPolyArea(context: *Context) u64 {
+        const setPolyArea = opaqueFn(reference.ref_nav_mesh_set_poly_area);
+        const getPolyArea = opaqueFn(reference.ref_nav_mesh_get_poly_area);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.poly_refs, context.poly_areas) |ref, area| {
-            sum +%= reference.ref_nav_mesh_set_poly_area(nav, ref, area);
+            sum +%= setPolyArea(nav, ref, area);
         }
         var area: u8 = 0;
         for (context.poly_refs) |ref| {
-            sum +%= reference.ref_nav_mesh_get_poly_area(nav, ref, &area);
+            sum +%= getPolyArea(nav, ref, &area);
             sum +%= area;
         }
         return sum;
     }
 
     fn portSetAndGetPolyArea(context: *Context) u64 {
+        const setPolyArea = opaqueFn(detour.NavMesh.setPolyArea);
+        const getPolyArea = opaqueFn(detour.NavMesh.getPolyArea);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.poly_refs, context.poly_areas) |ref, area| {
-            sum +%= statusSum(nav.setPolyArea(ref, area));
+            sum +%= statusSum(setPolyArea(nav, ref, area));
         }
         var area: u8 = 0;
         for (context.poly_refs) |ref| {
-            sum +%= statusSum(nav.getPolyArea(ref, &area));
+            sum +%= statusSum(getPolyArea(nav, ref, &area));
             sum +%= area;
         }
         return sum;
     }
 
     fn baselineCalcTileLoc(context: *Context) u64 {
+        const calcTileLoc = opaqueFn(reference.ref_nav_mesh_calc_tile_loc);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         var x: i32 = 0;
         var y: i32 = 0;
         for (context.points) |*point| {
-            reference.ref_nav_mesh_calc_tile_loc(nav, point, &x, &y);
+            calcTileLoc(nav, point, &x, &y);
             sum +%= intSum(x);
             sum +%= intSum(y);
         }
@@ -715,10 +747,11 @@ const Context = struct {
     }
 
     fn portCalcTileLoc(context: *Context) u64 {
+        const calcTileLoc = opaqueFn(detour.NavMesh.calcTileLoc);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.points) |point| {
-            const location = nav.calcTileLoc(point);
+            const location = calcTileLoc(nav, point);
             sum +%= intSum(location.x);
             sum +%= intSum(location.y);
         }
@@ -726,11 +759,12 @@ const Context = struct {
     }
 
     fn baselineGetTilesAt(context: *Context) u64 {
+        const getTilesAt = opaqueFn(reference.ref_nav_mesh_get_tiles_at);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         var tiles: [tiles_at_count_max]?*const reference.MeshTile = @splat(null);
         for (context.tile_locations) |location| {
-            const count = reference.ref_nav_mesh_get_tiles_at(
+            const count = getTilesAt(
                 nav,
                 location.x,
                 location.y,
@@ -746,11 +780,12 @@ const Context = struct {
     }
 
     fn portGetTilesAt(context: *Context) u64 {
+        const getTilesAt = opaqueFn(detour.NavMesh.getTilesAt);
         var sum: u64 = 0;
         const nav = &context.nav;
         var tiles: [tiles_at_count_max]*const detour.MeshTile = @splat(context.tiles[0].tile);
         for (context.tile_locations) |location| {
-            const count = nav.getTilesAt(location.x, location.y, &tiles);
+            const count = getTilesAt(nav, location.x, location.y, &tiles);
             sum +%= count;
             for (tiles[0..count]) |tile| {
                 sum +%= tile.header.?.user_id;
@@ -760,10 +795,11 @@ const Context = struct {
     }
 
     fn baselineGetTileAt(context: *Context) u64 {
+        const getTileAt = opaqueFn(reference.ref_nav_mesh_get_tile_at);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.tile_locations) |location| {
-            const found = reference.ref_nav_mesh_get_tile_at(nav, location.x, location.y, 0);
+            const found = getTileAt(nav, location.x, location.y, 0);
             if (found) |tile| {
                 sum +%= 1;
                 sum +%= context.referenceHeader(tile).user_id;
@@ -773,10 +809,11 @@ const Context = struct {
     }
 
     fn portGetTileAt(context: *Context) u64 {
+        const getTileAt = opaqueFn(detour.NavMesh.getTileAt);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.tile_locations) |location| {
-            const found = nav.getTileAt(location.x, location.y, 0);
+            const found = getTileAt(nav, location.x, location.y, 0);
             if (found) |tile| {
                 sum +%= 1;
                 sum +%= tile.header.?.user_id;
@@ -786,28 +823,31 @@ const Context = struct {
     }
 
     fn baselineGetTileRefAt(context: *Context) u64 {
+        const getTileRefAt = opaqueFn(reference.ref_nav_mesh_get_tile_ref_at);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.tile_locations) |location| {
-            sum +%= reference.ref_nav_mesh_get_tile_ref_at(nav, location.x, location.y, 0);
+            sum +%= getTileRefAt(nav, location.x, location.y, 0);
         }
         return sum;
     }
 
     fn portGetTileRefAt(context: *Context) u64 {
+        const getTileRefAt = opaqueFn(detour.NavMesh.getTileRefAt);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.tile_locations) |location| {
-            sum +%= nav.getTileRefAt(location.x, location.y, 0);
+            sum +%= getTileRefAt(nav, location.x, location.y, 0);
         }
         return sum;
     }
 
     fn baselineGetTileByRef(context: *Context) u64 {
+        const getTileByRef = opaqueFn(reference.ref_nav_mesh_get_tile_by_ref);
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.located_tile_refs) |ref| {
-            const found = reference.ref_nav_mesh_get_tile_by_ref(nav, ref);
+            const found = getTileByRef(nav, ref);
             if (found) |tile| {
                 sum +%= 1;
                 sum +%= context.referenceHeader(tile).user_id;
@@ -817,10 +857,11 @@ const Context = struct {
     }
 
     fn portGetTileByRef(context: *Context) u64 {
+        const getTileByRef = opaqueFn(detour.NavMesh.getTileByRef);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.located_tile_refs) |ref| {
-            const found = nav.getTileByRef(ref);
+            const found = getTileByRef(nav, ref);
             if (found) |tile| {
                 sum +%= 1;
                 sum +%= tile.header.?.user_id;
@@ -830,12 +871,15 @@ const Context = struct {
     }
 
     fn baselineGetOffMeshConnectionPolyEndPoints(context: *Context) u64 {
+        const getOffMeshConnectionPolyEndPoints = opaqueFn(
+            reference.ref_nav_mesh_get_off_mesh_connection_poly_end_points,
+        );
         var sum: u64 = 0;
         const nav = context.reference_nav;
         var start: [3]f32 = @splat(0);
         var end: [3]f32 = @splat(0);
         for (context.connection_steps) |step| {
-            sum +%= reference.ref_nav_mesh_get_off_mesh_connection_poly_end_points(
+            sum +%= getOffMeshConnectionPolyEndPoints(
                 nav,
                 step.prev_ref,
                 step.poly_ref,
@@ -849,12 +893,16 @@ const Context = struct {
     }
 
     fn portGetOffMeshConnectionPolyEndPoints(context: *Context) u64 {
+        const getOffMeshConnectionPolyEndPoints = opaqueFn(
+            detour.NavMesh.getOffMeshConnectionPolyEndPoints,
+        );
         var sum: u64 = 0;
         const nav = &context.nav;
         var start: [3]f32 = @splat(0);
         var end: [3]f32 = @splat(0);
         for (context.connection_steps) |step| {
-            sum +%= statusSum(nav.getOffMeshConnectionPolyEndPoints(
+            sum +%= statusSum(getOffMeshConnectionPolyEndPoints(
+                nav,
                 step.prev_ref,
                 step.poly_ref,
                 &start,
@@ -867,10 +915,13 @@ const Context = struct {
     }
 
     fn baselineGetOffMeshConnectionByRef(context: *Context) u64 {
+        const getOffMeshConnectionByRef = opaqueFn(
+            reference.ref_nav_mesh_get_off_mesh_connection_by_ref,
+        );
         var sum: u64 = 0;
         const nav = context.reference_nav;
         for (context.connection_refs) |ref| {
-            const found = reference.ref_nav_mesh_get_off_mesh_connection_by_ref(nav, ref);
+            const found = getOffMeshConnectionByRef(nav, ref);
             if (found) |connection| {
                 sum +%= 1;
                 sum +%= connection.user_id;
@@ -880,10 +931,11 @@ const Context = struct {
     }
 
     fn portGetOffMeshConnectionByRef(context: *Context) u64 {
+        const getOffMeshConnectionByRef = opaqueFn(detour.NavMesh.getOffMeshConnectionByRef);
         var sum: u64 = 0;
         const nav = &context.nav;
         for (context.connection_refs) |ref| {
-            const found = nav.getOffMeshConnectionByRef(ref);
+            const found = getOffMeshConnectionByRef(nav, ref);
             if (found) |connection| {
                 sum +%= 1;
                 sum +%= connection.user_id;
@@ -893,13 +945,14 @@ const Context = struct {
     }
 
     fn baselineDataSwapEndian(context: *Context) u64 {
+        const navMeshDataSwapEndian = opaqueFn(reference.ref_nav_mesh_data_swap_endian);
         var sum: u64 = 0;
         for (context.tiles) |*tile| {
             const bytes = tile.swap_bytes;
             // Twice: to the other byte order and back.
             for (0..2) |_| {
                 sum +%= @intFromBool(
-                    reference.ref_nav_mesh_data_swap_endian(bytes.ptr, @intCast(bytes.len)),
+                    navMeshDataSwapEndian(bytes.ptr, @intCast(bytes.len)),
                 );
                 sum +%= blobSum(bytes);
             }
@@ -908,11 +961,12 @@ const Context = struct {
     }
 
     fn portDataSwapEndian(context: *Context) u64 {
+        const navMeshDataSwapEndian = opaqueFn(detour.nav_mesh_builder.navMeshDataSwapEndian);
         var sum: u64 = 0;
         for (context.tiles) |*tile| {
             const bytes = tile.swap_bytes;
             for (0..2) |_| {
-                sum +%= @intFromBool(detour.nav_mesh_builder.navMeshDataSwapEndian(bytes));
+                sum +%= @intFromBool(navMeshDataSwapEndian(bytes));
                 sum +%= blobSum(bytes);
             }
         }
@@ -920,6 +974,7 @@ const Context = struct {
     }
 
     fn baselineHeaderSwapEndian(context: *Context) u64 {
+        const navMeshHeaderSwapEndian = opaqueFn(reference.ref_nav_mesh_header_swap_endian);
         var sum: u64 = 0;
         for (0..header_swap_passes) |_| {
             for (context.tiles) |*tile| {
@@ -927,7 +982,7 @@ const Context = struct {
                 // Twice: to the other byte order and back.
                 for (0..2) |_| {
                     sum +%= @intFromBool(
-                        reference.ref_nav_mesh_header_swap_endian(bytes.ptr, @intCast(bytes.len)),
+                        navMeshHeaderSwapEndian(bytes.ptr, @intCast(bytes.len)),
                     );
                     sum +%= std.mem.readInt(u32, bytes[poly_count_offset..][0..4], .little);
                 }
@@ -937,12 +992,13 @@ const Context = struct {
     }
 
     fn portHeaderSwapEndian(context: *Context) u64 {
+        const navMeshHeaderSwapEndian = opaqueFn(detour.nav_mesh_builder.navMeshHeaderSwapEndian);
         var sum: u64 = 0;
         for (0..header_swap_passes) |_| {
             for (context.tiles) |*tile| {
                 const bytes = tile.swap_bytes;
                 for (0..2) |_| {
-                    sum +%= @intFromBool(detour.nav_mesh_builder.navMeshHeaderSwapEndian(bytes));
+                    sum +%= @intFromBool(navMeshHeaderSwapEndian(bytes));
                     sum +%= std.mem.readInt(u32, bytes[poly_count_offset..][0..4], .little);
                 }
             }
@@ -951,13 +1007,14 @@ const Context = struct {
     }
 
     fn baselineIntersectSegmentPoly2d(context: *Context) u64 {
+        const intersectSegmentPoly2d = opaqueFn(reference.ref_intersect_segment_poly_2d);
         var sum: u64 = 0;
         var t_min: f32 = 0;
         var t_max: f32 = 0;
         var seg_min: i32 = 0;
         var seg_max: i32 = 0;
         for (context.cases) |*case| {
-            sum +%= @intFromBool(reference.ref_intersect_segment_poly_2d(
+            sum +%= @intFromBool(intersectSegmentPoly2d(
                 &case.point,
                 &case.far,
                 case.polygon.floats(),
@@ -976,9 +1033,10 @@ const Context = struct {
     }
 
     fn portIntersectSegmentPoly2d(context: *Context) u64 {
+        const intersectSegmentPoly2d = opaqueFn(common.intersectSegmentPoly2d);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            const hit = common.intersectSegmentPoly2d(
+            const hit = intersectSegmentPoly2d(
                 case.point,
                 case.far,
                 case.polygon.corners(),
@@ -993,11 +1051,12 @@ const Context = struct {
     }
 
     fn baselineDistancePointPolyEdgesSqr(context: *Context) u64 {
+        const distancePointPolyEdgesSqr = opaqueFn(reference.ref_distance_pt_poly_edges_sqr);
         var sum: u64 = 0;
         var edge_dist_sqr: [verts_per_polygon]f32 = @splat(0);
         var edge_t: [verts_per_polygon]f32 = @splat(0);
         for (context.cases) |*case| {
-            sum +%= @intFromBool(reference.ref_distance_pt_poly_edges_sqr(
+            sum +%= @intFromBool(distancePointPolyEdgesSqr(
                 &case.point,
                 case.polygon.floats(),
                 @intCast(case.polygon.count),
@@ -1011,11 +1070,12 @@ const Context = struct {
     }
 
     fn portDistancePointPolyEdgesSqr(context: *Context) u64 {
+        const distancePointPolyEdgesSqr = opaqueFn(common.distancePointPolyEdgesSqr);
         var sum: u64 = 0;
         var edge_dist_sqr: [verts_per_polygon]f32 = @splat(0);
         var edge_t: [verts_per_polygon]f32 = @splat(0);
         for (context.cases) |*case| {
-            sum +%= @intFromBool(common.distancePointPolyEdgesSqr(
+            sum +%= @intFromBool(distancePointPolyEdgesSqr(
                 case.point,
                 case.polygon.corners(),
                 &edge_dist_sqr,
@@ -1028,9 +1088,10 @@ const Context = struct {
     }
 
     fn baselinePointInPolygon(context: *Context) u64 {
+        const pointInPolygon = opaqueFn(reference.ref_point_in_polygon);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            sum +%= @intFromBool(reference.ref_point_in_polygon(
+            sum +%= @intFromBool(pointInPolygon(
                 &case.point,
                 case.polygon.floats(),
                 @intCast(case.polygon.count),
@@ -1040,19 +1101,21 @@ const Context = struct {
     }
 
     fn portPointInPolygon(context: *Context) u64 {
+        const pointInPolygon = opaqueFn(common.pointInPolygon);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            sum +%= @intFromBool(common.pointInPolygon(case.point, case.polygon.corners()));
+            sum +%= @intFromBool(pointInPolygon(case.point, case.polygon.corners()));
         }
         return sum;
     }
 
     fn baselineClosestHeightOnTriangle(context: *Context) u64 {
+        const closestHeightOnTriangle = opaqueFn(reference.ref_closest_height_point_triangle);
         var sum: u64 = 0;
         var height: f32 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const found = reference.ref_closest_height_point_triangle(
+            const found = closestHeightOnTriangle(
                 &case.triangle_point,
                 &verts[0],
                 &verts[1],
@@ -1068,10 +1131,11 @@ const Context = struct {
     }
 
     fn portClosestHeightOnTriangle(context: *Context) u64 {
+        const closestHeightOnTriangle = opaqueFn(common.closestHeightOnTriangle);
         var sum: u64 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const found = common.closestHeightOnTriangle(
+            const found = closestHeightOnTriangle(
                 case.triangle_point,
                 verts[0],
                 verts[1],
@@ -1086,11 +1150,12 @@ const Context = struct {
     }
 
     fn baselineClosestPointOnTriangle(context: *Context) u64 {
+        const closestPointOnTriangle = opaqueFn(reference.ref_closest_pt_point_triangle);
         var sum: u64 = 0;
         var closest: [3]f32 = @splat(0);
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            reference.ref_closest_pt_point_triangle(
+            closestPointOnTriangle(
                 &closest,
                 &case.point,
                 &verts[0],
@@ -1103,10 +1168,11 @@ const Context = struct {
     }
 
     fn portClosestPointOnTriangle(context: *Context) u64 {
+        const closestPointOnTriangle = opaqueFn(common.closestPointOnTriangle);
         var sum: u64 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const closest = common.closestPointOnTriangle(
+            const closest = closestPointOnTriangle(
                 case.point,
                 verts[0],
                 verts[1],
@@ -1118,9 +1184,10 @@ const Context = struct {
     }
 
     fn baselineOverlapPolyPoly2d(context: *Context) u64 {
+        const overlapPolyPoly2d = opaqueFn(reference.ref_overlap_poly_poly_2d);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            sum +%= @intFromBool(reference.ref_overlap_poly_poly_2d(
+            sum +%= @intFromBool(overlapPolyPoly2d(
                 case.polygon.floats(),
                 @intCast(case.polygon.count),
                 case.other.floats(),
@@ -1131,9 +1198,10 @@ const Context = struct {
     }
 
     fn portOverlapPolyPoly2d(context: *Context) u64 {
+        const overlapPolyPoly2d = opaqueFn(common.overlapPolyPoly2d);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            sum +%= @intFromBool(common.overlapPolyPoly2d(
+            sum +%= @intFromBool(overlapPolyPoly2d(
                 case.polygon.corners(),
                 case.other.corners(),
             ));
@@ -1142,11 +1210,12 @@ const Context = struct {
     }
 
     fn baselineRandomPointInConvexPoly(context: *Context) u64 {
+        const randomPointInConvexPoly = opaqueFn(reference.ref_random_point_in_convex_poly);
         var sum: u64 = 0;
         var areas: [verts_per_polygon]f32 = @splat(0);
         var point: [3]f32 = @splat(0);
         for (context.cases) |*case| {
-            reference.ref_random_point_in_convex_poly(
+            randomPointInConvexPoly(
                 case.polygon.floats(),
                 @intCast(case.polygon.count),
                 &areas,
@@ -1160,10 +1229,11 @@ const Context = struct {
     }
 
     fn portRandomPointInConvexPoly(context: *Context) u64 {
+        const randomPointInConvexPoly = opaqueFn(common.randomPointInConvexPoly);
         var sum: u64 = 0;
         var areas: [verts_per_polygon]f32 = @splat(0);
         for (context.cases) |*case| {
-            const point = common.randomPointInConvexPoly(
+            const point = randomPointInConvexPoly(
                 case.polygon.corners(),
                 &areas,
                 case.s,
@@ -1175,11 +1245,12 @@ const Context = struct {
     }
 
     fn baselineDistancePointSegmentSqr2d(context: *Context) u64 {
+        const distancePointSegmentSqr2d = opaqueFn(reference.ref_distance_pt_seg_sqr_2d);
         var sum: u64 = 0;
         var t: f32 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const dist_sqr = reference.ref_distance_pt_seg_sqr_2d(
+            const dist_sqr = distancePointSegmentSqr2d(
                 &case.point,
                 &verts[0],
                 &verts[1],
@@ -1192,10 +1263,11 @@ const Context = struct {
     }
 
     fn portDistancePointSegmentSqr2d(context: *Context) u64 {
+        const distancePointSegmentSqr2d = opaqueFn(common.distancePointSegmentSqr2d);
         var sum: u64 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const distance = common.distancePointSegmentSqr2d(case.point, verts[0], verts[1]);
+            const distance = distancePointSegmentSqr2d(case.point, verts[0], verts[1]);
             sum +%= floatSum(distance.dist_sqr);
             sum +%= floatSum(distance.t);
         }
@@ -1203,12 +1275,13 @@ const Context = struct {
     }
 
     fn baselineIntersectSegmentSegment2d(context: *Context) u64 {
+        const intersectSegmentSegment2d = opaqueFn(reference.ref_intersect_seg_seg_2d);
         var sum: u64 = 0;
         var s: f32 = 0;
         var t: f32 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const found = reference.ref_intersect_seg_seg_2d(
+            const found = intersectSegmentSegment2d(
                 &case.point,
                 &case.far,
                 &verts[0],
@@ -1226,10 +1299,11 @@ const Context = struct {
     }
 
     fn portIntersectSegmentSegment2d(context: *Context) u64 {
+        const intersectSegmentSegment2d = opaqueFn(common.intersectSegmentSegment2d);
         var sum: u64 = 0;
         for (context.cases) |*case| {
             const verts = &case.polygon.verts;
-            const found = common.intersectSegmentSegment2d(
+            const found = intersectSegmentSegment2d(
                 case.point,
                 case.far,
                 verts[0],
@@ -1245,10 +1319,11 @@ const Context = struct {
     }
 
     fn baselineCalcPolyCenter(context: *Context) u64 {
+        const calcPolyCenter = opaqueFn(reference.ref_calc_poly_center);
         var sum: u64 = 0;
         var center: [3]f32 = @splat(0);
         for (context.cases) |*case| {
-            reference.ref_calc_poly_center(
+            calcPolyCenter(
                 &center,
                 &case.indices,
                 @intCast(case.polygon.count),
@@ -1260,9 +1335,10 @@ const Context = struct {
     }
 
     fn portCalcPolyCenter(context: *Context) u64 {
+        const calcPolyCenter = opaqueFn(common.calcPolyCenter);
         var sum: u64 = 0;
         for (context.cases) |*case| {
-            const center = common.calcPolyCenter(
+            const center = calcPolyCenter(
                 case.indices[0..case.polygon.count],
                 case.polygon.corners(),
             );
@@ -1336,12 +1412,13 @@ pub fn run(bench: *Bench) !void {
     const tile_count = context.tiles.len;
     const poly_count = context.poly_refs.len;
 
-    // What reaching the original through its C interface costs, before any
-    // work: a call that returns its argument against the same sum inline.
-    // The original's side of every row pays it once a call.
+    // What a call through an opaque pointer costs, before any work: a call
+    // that returns its argument on each side. Both sides pay it once an
+    // operation; the original pays one more inside its C shim, which calls
+    // the library.
     try bench.compare(
         .{
-            .name = "calibration: one call through the C interface",
+            .name = "calibration: one call through an opaque pointer",
             .per = "call",
             .count = context.validity_refs.len,
         },

@@ -5,6 +5,7 @@
 const std = @import("std");
 const support = @import("support");
 const Bench = @import("bench.zig").Bench;
+const opaqueFn = @import("bench.zig").opaqueFn;
 const Row = @import("bench.zig").Row;
 
 const detour = support.detour;
@@ -210,11 +211,13 @@ const Context = struct {
     }
 
     fn floatFindNearestPoly(context: *Context) u64 {
+        const findNearestPoly = opaqueFn(detour.NavMeshQuery.findNearestPoly);
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]f32 = @splat(0);
         for (context.float_centers) |center| {
-            sum +%= statusSum(context.float_query.findNearestPoly(
+            sum +%= statusSum(findNearestPoly(
+                &context.float_query,
                 center,
                 half_extents,
                 &context.float_filter,
@@ -228,12 +231,14 @@ const Context = struct {
     }
 
     fn integerFindNearestPoly(context: *Context) u64 {
+        const findNearestPoly = opaqueFn(integer.NavMeshQuery.findNearestPoly);
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]i32 = @splat(0);
         const extents = millimetres(half_extents);
         for (context.centers) |center| {
-            sum +%= statusSum(context.query.findNearestPoly(
+            sum +%= statusSum(findNearestPoly(
+                &context.query,
                 center,
                 extents,
                 &context.filter,
@@ -247,32 +252,36 @@ const Context = struct {
     }
 
     fn floatGetPolyHeight(context: *Context) u64 {
+        const getPolyHeight = opaqueFn(detour.NavMeshQuery.getPolyHeight);
         var sum: u64 = 0;
         var height: f32 = 0;
         for (0..query_count) |i| {
             const p = context.float_points[i];
-            sum +%= statusSum(context.float_query.getPolyHeight(context.refs[i], p, &height));
+            sum +%= statusSum(getPolyHeight(&context.float_query, context.refs[i], p, &height));
             sum +%= floatSum(height);
         }
         return sum;
     }
 
     fn integerGetPolyHeight(context: *Context) u64 {
+        const getPolyHeight = opaqueFn(integer.NavMeshQuery.getPolyHeight);
         var sum: u64 = 0;
         var height: i32 = 0;
         for (0..query_count) |i| {
             const p = context.points[i];
-            sum +%= statusSum(context.query.getPolyHeight(context.refs[i], p, &height));
+            sum +%= statusSum(getPolyHeight(&context.query, context.refs[i], p, &height));
             sum +%= @as(u32, @bitCast(height));
         }
         return sum;
     }
 
     fn floatFindPath(context: *Context) u64 {
+        const findPath = opaqueFn(detour.NavMeshQuery.findPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.findPath(
+            sum +%= statusSum(findPath(
+                &context.float_query,
                 context.refs[i],
                 context.refs[i + 1],
                 context.float_points[i],
@@ -287,10 +296,12 @@ const Context = struct {
     }
 
     fn integerFindPath(context: *Context) u64 {
+        const findPath = opaqueFn(integer.NavMeshQuery.findPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findPath(
+            sum +%= statusSum(findPath(
+                &context.query,
                 context.refs[i],
                 context.refs[i + 1],
                 context.points[i],
@@ -305,10 +316,12 @@ const Context = struct {
     }
 
     fn floatFindStraightPath(context: *Context) u64 {
+        const findStraightPath = opaqueFn(detour.NavMeshQuery.findStraightPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.findStraightPath(
+            sum +%= statusSum(findStraightPath(
+                &context.float_query,
                 context.float_points[i],
                 context.float_points[i + 1],
                 context.path(i),
@@ -325,10 +338,12 @@ const Context = struct {
     }
 
     fn integerFindStraightPath(context: *Context) u64 {
+        const findStraightPath = opaqueFn(integer.NavMeshQuery.findStraightPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findStraightPath(
+            sum +%= statusSum(findStraightPath(
+                &context.query,
                 context.points[i],
                 context.points[i + 1],
                 context.path(i),
@@ -345,11 +360,13 @@ const Context = struct {
     }
 
     fn floatMoveAlongSurface(context: *Context) u64 {
+        const moveAlongSurface = opaqueFn(detour.NavMeshQuery.moveAlongSurface);
         var sum: u64 = 0;
         var result: [3]f32 = @splat(0);
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.moveAlongSurface(
+            sum +%= statusSum(moveAlongSurface(
+                &context.float_query,
                 context.refs[i],
                 context.float_points[i],
                 context.float_steps[i],
@@ -364,11 +381,13 @@ const Context = struct {
     }
 
     fn integerMoveAlongSurface(context: *Context) u64 {
+        const moveAlongSurface = opaqueFn(integer.NavMeshQuery.moveAlongSurface);
         var sum: u64 = 0;
         var result: [3]i32 = @splat(0);
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.moveAlongSurface(
+            sum +%= statusSum(moveAlongSurface(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 context.steps[i],
@@ -383,6 +402,7 @@ const Context = struct {
     }
 
     fn floatRaycast(context: *Context) u64 {
+        const raycast = opaqueFn(detour.NavMeshQuery.raycast);
         var sum: u64 = 0;
         var hit: detour.RaycastHit = .{
             .t = 0,
@@ -393,7 +413,8 @@ const Context = struct {
             .path_cost = 0,
         };
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.raycast(
+            sum +%= statusSum(raycast(
+                &context.float_query,
                 context.refs[i],
                 context.float_points[i],
                 context.float_points[i + 1],
@@ -408,6 +429,7 @@ const Context = struct {
     }
 
     fn integerRaycast(context: *Context) u64 {
+        const raycast = opaqueFn(integer.NavMeshQuery.raycast);
         var sum: u64 = 0;
         var hit: integer.RaycastHit = .{
             .t = .zero,
@@ -418,7 +440,8 @@ const Context = struct {
             .path_cost = 0,
         };
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.raycast(
+            sum +%= statusSum(raycast(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 context.points[i + 1],
@@ -433,10 +456,12 @@ const Context = struct {
     }
 
     fn floatFindPolysAroundCircle(context: *Context) u64 {
+        const findPolysAroundCircle = opaqueFn(detour.NavMeshQuery.findPolysAroundCircle);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.findPolysAroundCircle(
+            sum +%= statusSum(findPolysAroundCircle(
+                &context.float_query,
                 context.refs[i],
                 context.float_points[i],
                 circle_radius,
@@ -453,10 +478,12 @@ const Context = struct {
     }
 
     fn integerFindPolysAroundCircle(context: *Context) u64 {
+        const findPolysAroundCircle = opaqueFn(integer.NavMeshQuery.findPolysAroundCircle);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findPolysAroundCircle(
+            sum +%= statusSum(findPolysAroundCircle(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 circle_radius_mm,
@@ -473,12 +500,14 @@ const Context = struct {
     }
 
     fn floatFindDistanceToWall(context: *Context) u64 {
+        const findDistanceToWall = opaqueFn(detour.NavMeshQuery.findDistanceToWall);
         var sum: u64 = 0;
         var distance: f32 = 0;
         var point: [3]f32 = @splat(0);
         var normal: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= statusSum(context.float_query.findDistanceToWall(
+            sum +%= statusSum(findDistanceToWall(
+                &context.float_query,
                 context.refs[i],
                 context.float_points[i],
                 wall_radius,
@@ -493,12 +522,14 @@ const Context = struct {
     }
 
     fn integerFindDistanceToWall(context: *Context) u64 {
+        const findDistanceToWall = opaqueFn(integer.NavMeshQuery.findDistanceToWall);
         var sum: u64 = 0;
         var distance: i32 = 0;
         var point: [3]i32 = @splat(0);
         var normal: [3]i32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findDistanceToWall(
+            sum +%= statusSum(findDistanceToWall(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 wall_radius_mm,

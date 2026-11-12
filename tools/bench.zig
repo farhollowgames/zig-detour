@@ -33,6 +33,17 @@ pub const Row = struct {
     same_results: bool = true,
 };
 
+/// `function` behind a pointer the compiler cannot see through. Every row
+/// calls each library function it times, on either side, through one of
+/// these, taken once before its loop: the call is never inlined into the
+/// row, and nothing the row knows about the arguments reaches the function,
+/// which runs as compiled on its own, the way the original's library does.
+pub fn opaqueFn(comptime function: anytype) *const @TypeOf(function) {
+    var pointer: *const @TypeOf(function) = &function;
+    std.mem.doNotOptimizeAway(&pointer);
+    return pointer;
+}
+
 /// The table writer and the timing settings every row shares.
 pub const Bench = struct {
     io: Io,

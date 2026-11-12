@@ -64,7 +64,14 @@ Coordinates lie within 2^29 mm (about 536 km) of the origin.
 
 One float unit of the original is one metre in Recast's demo assets and in
 Loomwork; the converter multiplies by 1000 by default and takes another scale
-when a mesh is in other units.
+when a mesh is in other units. The variant's unit is the millimetre at every
+scale: `scale` is the number of millimetres in one float unit, so a tile in
+centimetres converts at 10 to the bytes the same tile in metres gives at
+1000, and every fixed distance below (the geometry tests' thresholds, the
+bound, the checks' tolerances) is in millimetres whatever the scale. A scale
+that makes another unit, such as 1 for a tile in metres, is a caller's
+mistake the converter cannot see: every threshold is then read in that
+unit.
 
 ## Bounds
 
@@ -444,16 +451,16 @@ are stable, so it cannot pass by skipping.
 | query | what must hold on a stable case |
 | --- | --- |
 | converter | every vertex within 0.5 mm of the float one, an off-mesh connection's ends within `T` as the nearest points they are snapped to; links the same, limits within one step; every tree box holds the float box and the integer geometry |
-| `findNearestPoly` | same polygon and over-flag, point within `T`; a different polygon only where the two trees' searches differ at the box's border, or where two polygons lie equally near within `T`; border cases at most 1/64 of the stable cases and ties at most 4 |
-| `queryPolygons` | same set, but for polygons whose integer tree box is within two tree cells of the query box's border (the query box is widened by up to two cells on either side) |
+| `findNearestPoly` | same polygon and over-flag, point within `T`; a different polygon only where the two trees' searches differ at the box's border, or where two polygons lie equally near within `T`; border cases at most 1/50 of the stable cases and ties at most 1/500 |
+| `queryPolygons` | same set, but for polygons whose integer tree box is within two tree cells of the query box's border (the query box is widened by up to two cells on either side); such cases at most 1/20 of the cases, and such polygons at most 1/10 |
 | `closestPointOnPoly`, `closestPointOnPolyBoundary`, `getPolyHeight` | same status and over-flag, point within `T`, height within `2 T` |
-| `findPath`, sliced | same status; the same corridor, or one whose cost, summed by one evaluator on both, is within 0.1% plus 1 mm per polygon; at least 90% the same corridor |
-| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other, plus 1/255 of the edge of each corridor link whose limits are a step apart; same flags and polygons at the corners both have, where a corner at a vertex several portals share may name either polygon that holds it; with the crossing options both paths are held against the float corners alone, since the float port extends a crossing past its portal; where vertices of the corridor meet on one line the float funnel can turn on the far side of a portal and take a longer way, and the integer path must then pass within `T` of every portal and be no longer (at most 2% of the stable cases) |
+| `findPath`, sliced | same status; the same corridor, or one whose cost, summed by one evaluator on both, is within 0.1% plus 1 mm per polygon; at most 1/200 of the stable cases on another corridor. A partial result (`partial_result`: the end is not reached) leads to the node nearest the end, and is compared so only where both sides stopped at the same polygon. Where they stopped at others, two nodes lie as near the end within rounding, as two corridors can cost the same (6, "Equal-cost paths", below): the float port must have reached both polygons, their nearest nodes' distances to the end must lie within `2 T` of each other, and the corridors and their costs are not compared |
+| `findStraightPath` on one corridor | the two paths as lines lie within `T` of each other, plus 1/255 of the edge of each corridor link whose limits are a step apart; same flags and polygons at the corners both have, where a corner at a vertex several portals share may name either polygon that holds it; with the crossing options the corners of both, each side run again without the options, are held so, since the float port extends a crossing past its portal; then the crossings are compared in order: the same flags and polygon at each vertex both list, a vertex several portals share naming either polygon, and each integer crossing on its portal within `T` (plus the link step); a crossing only one path lists only where it and the vertex beside it are one point within `T`, at an end of its portal, on a portal the path starts or ends on, or where the leg runs along its portal (the float port takes lines within `1e-6` of parallel as parallel); where the float port's own corners change with the option, on a corridor that turns back along one line, the crossings are not compared; where vertices of the corridor meet on one line the float funnel can turn on the far side of a portal and take a longer way, and the integer path must then pass within `T` of every portal and be no longer (at most 1/80 of the stable cases); corners at a vertex several portals share at most 1/45 of the stable cases, and of the cases with the crossing options, crossings on one path only at most 1/22, crossings at such a vertex at most 1/40, and float corners that change with the option at most 1/250 |
 | `raycast` | same polygons crossed and same hit edge; hit point within `T` over the sine of the angle between ray and wall (a wall moved by `T` moves the hit along the ray by that much), and its height within that times the ray's rise over its run; normal within `2^-10`; cost within 0.1% plus `1 + 2 T` mm per polygon crossed plus `T` |
 | `moveAlongSurface` | same polygons visited, result within `T`; a case is stable only if the float port's walk ends at the target, or on a wall, for every nudge, since the end keeps the target's height inside and takes the wall's on a wall |
 | `findPolysAroundCircle`, `findPolysAroundShape`, `findLocalNeighbourhood` | same polygons and parents; costs within 0.1% plus, per polygon of depth, `1 + 2 T` mm times the dearest area cost, plus `T` |
 | `getPolyWallSegments` | same count and references; ends within `T` plus 1/255 of the polygon's longest edge |
-| `findDistanceToWall` | distance within `T`; wall point within `T` unless two walls are equally near; normal within `max(2^-8, 2 T / distance)` when the distance is above 100 mm |
+| `findDistanceToWall` | distance within `T`; wall point within `T` unless two walls are equally near; normal within `max(2^-8, 2 T / distance)` when the distance is above 100 mm; two walls equally near at most 1/300 of the stable cases |
 | random points | the point lies on the returned polygon within 1 mm, the polygon passes the filter, and over many draws polygons are picked in proportion to area |
 
 Every row is a seeded test of at least a thousand cases that prints the
@@ -461,6 +468,10 @@ level and the case on failure (the seeds are constants of the tests), plus
 hand-made cases on both sides: a mesh with no tile, one polygon with points
 inside, exactly on an edge, at a vertex and outside, and two polygons joined
 along an edge that the conversion makes a point.
+
+Each rate above stands just above the worst measured over fuzz seeds 0 to 31,
+the same in Debug and in ReleaseSafe; the tests write the measured worst
+beside each limit.
 
 **Overflow.** A test runs every query on a level of four tiles that spans
 the whole coordinate range, its vertices within a millimetre of the bound,

@@ -67,28 +67,25 @@ every seeded differential test to other inputs at once; `0`, the default,
 keeps the tests' own seeds. A few seeds stay fixed whatever the option: those
 paired with the original's own random number generator, the integer
 workload and the level it runs on (its hash is kept in the test), and the
-benchmark's inputs. Under seeds 1 to 6 every comparison with the original
+benchmark's inputs. Under seeds 1 to 31 every comparison with the original
 passes, in Debug and in ReleaseSafe. Where an integer case lies outside a
 tolerance the design states, the test applies that tolerance (a link's
 limits a 255th apart move a portal end by a 255th of its edge). The cases
-below need a tolerance the design does not state. They are left failing
-under those seeds until the author decides whether to widen it:
+below need a tolerance or rule the design does not state. They are left
+failing under those seeds, the same in both modes, until the author decides:
 
-- `findPath` (seeds 1, 2, 4, 5, 6), with a partial result: the two sides
-  stop at different nodes equally near the end, so their corridors' costs
-  are not comparable.
-- `findStraightPath`: an end clamped to the boundary where the float port has
-  a near tie between an edge and a vertex, 3.6 mm apart (seed 3); two paths
-  8.3 mm apart where the integer one is 17 mm longer (seed 6); and a float
-  path 6.8 m longer whose ray grazes a float corner more than 2 mm from the
-  exact one (seed 1).
-- `raycast`: the cost of a grazing hit, 9 to 12 mm off where 7 to 8 mm is
-  allowed (seeds 2, 3, 4); the cost's tolerance lacks the 1/sine factor the
-  hit point's has.
+- `raycast`: the cost of a grazing hit, 9 to 31 mm off where 7 to 16 mm is
+  allowed (seeds 2, 3, 4, 12, 13, 14, 20, 23, 26, 29); the cost's tolerance
+  lacks the 1/sine factor the hit point's has.
 - `moveAlongSurface`: the same end with a different list of visited
-  polygons, from a tie at a shared edge (seed 2).
+  polygons, from a tie at a shared edge (seeds 2, 9, 10, 12, 15, 27, 29).
 - `findDistanceToWall`: one normal 0.016 off, from two walls at nearly the
-  same distance (seed 4).
+  same distance (seeds 4, 11).
+- `findStraightPath`: an end clamped to the boundary where the float port has
+  a near tie between an edge and a vertex, 3.6 mm apart (seed 3).
+- `findPath`: a complete sliced search where the integer corridor, 71.4 m
+  over 15 polygons, costs 2.7% less than the float port's, 73.4 m over 17
+  (seed 13); the design allows 0.1% either way.
 
 Two cases on the dungeon level under seed 5 were test errors, now fixed. A
 walk's end 0.28 mm outside a polygon edge on the integer mesh lay 0.5 mm
@@ -98,6 +95,18 @@ only if the float walk ends the same way, at the target or on a wall, for
 every nudge. A ray rising 4.9 m over 0.3 m across had its hit height held
 to the tolerance across the ground; the test now scales it by the ray's
 rise.
+
+Wider seeds found more test errors, now fixed. The check that a straight
+path is walkable casts the float port's ray along each leg, and a ray that
+runs exactly along a wall at 45 degrees stops where it starts; the check now
+steps on to the wall's far end there (seeds 8, 20, 21, 24, and a test of the
+seed-8 leg). Where both searches end on a partial result at different
+polygons, the corridors are no longer compared: two nodes lie as near the
+end within rounding, and the test holds their distances to the end within
+`2 T` of each other instead. With the crossing options, the crossings are
+compared one by one under the rules of the design rather than as one line.
+A random point on one polygon was held to the polygon's interior, where the
+design allows it within 1 mm of the polygon (seed 12).
 
 Queries on separate `NavMeshQuery` values over one shared `NavMesh` give the
 same bytes on 1, 2 and many threads, the way the original documents its use
@@ -131,6 +140,6 @@ distance given).
 Where the two sides may differ (a polygon at the border of a query box, two
 polygons or walls equally near, a corner at a vertex several portals share,
 a float path that takes a longer way), each test counts the cases and holds
-the count to a limit just above what it measures over seeds 0 to 6 (read
-with the failing cases listed above set aside); the measured values are
-written beside the limits in `test/integer_test.zig`.
+the count, as a rate of the stable cases, to a limit just above the worst
+it measures over seeds 0 to 31 in Debug and in ReleaseSafe; the measured
+worst is written beside each limit in `test/integer_test.zig`.

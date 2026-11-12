@@ -4,6 +4,7 @@
 const std = @import("std");
 const support = @import("support");
 const Bench = @import("bench.zig").Bench;
+const opaqueFn = @import("bench.zig").opaqueFn;
 
 const detour = support.detour;
 const reference = support.reference;
@@ -384,12 +385,15 @@ const Context = struct {
 
     /// The polygons of every tile of the original's navigation mesh.
     fn referencePolyCount(self: *const Context) u64 {
+        const getMaxTiles = opaqueFn(reference.ref_nav_mesh_get_max_tiles);
+        const getTile = opaqueFn(reference.ref_nav_mesh_get_tile);
+        const tileHeader = opaqueFn(reference.ref_tile_header);
         var count: u64 = 0;
-        const tile_count = reference.ref_nav_mesh_get_max_tiles(self.reference_nav);
+        const tile_count = getMaxTiles(self.reference_nav);
         var i: i32 = 0;
         while (i < tile_count) : (i += 1) {
-            const tile = reference.ref_nav_mesh_get_tile(self.reference_nav, i) orelse continue;
-            const header = reference.ref_tile_header(tile) orelse continue;
+            const tile = getTile(self.reference_nav, i) orelse continue;
+            const header = tileHeader(tile) orelse continue;
             count +%= @as(u32, @bitCast(header.poly_count));
         }
         return count;
@@ -409,9 +413,10 @@ const Context = struct {
     // contours, the polygon mesh and the tile itself, which replaces the
     // tile built before.
     fn baselineBuildNavMeshTile(context: *Context) u64 {
+        const buildNavMeshTile = opaqueFn(reference_tile_cache.ref_tc_build_nav_mesh_tile);
         var sum: u64 = 0;
         for (context.reference_refs) |ref| {
-            sum +%= reference_tile_cache.ref_tc_build_nav_mesh_tile(
+            sum +%= buildNavMeshTile(
                 context.reference_cache,
                 ref,
                 context.reference_nav,
@@ -421,9 +426,10 @@ const Context = struct {
     }
 
     fn portBuildNavMeshTile(context: *Context) u64 {
+        const buildNavMeshTile = opaqueFn(detour.TileCache.buildNavMeshTile);
         var sum: u64 = 0;
         for (context.refs) |ref| {
-            sum +%= statusSum(context.cache.buildNavMeshTile(ref, &context.nav));
+            sum +%= statusSum(buildNavMeshTile(&context.cache, ref, &context.nav));
         }
         return sum +% context.portPolyCount();
     }
@@ -432,25 +438,28 @@ const Context = struct {
     // tiles under them rebuilt until the cache is up to date; then the
     // obstacles taken away and the tiles rebuilt again.
     fn baselineObstacles(context: *Context) u64 {
+        const addObstacle = opaqueFn(reference_tile_cache.ref_tc_add_obstacle);
+        const removeObstacle = opaqueFn(reference_tile_cache.ref_tc_remove_obstacle);
         const cache = context.reference_cache;
         var sum: u64 = 0;
         for (&context.obstacle_points, &context.reference_obstacle_refs) |*point, *ref| {
-            sum +%= reference_tile_cache.ref_tc_add_obstacle(cache, point, 1.0, 2.0, ref);
+            sum +%= addObstacle(cache, point, 1.0, 2.0, ref);
             sum +%= ref.*;
         }
         sum +%= referenceSettle(context);
         for (context.reference_obstacle_refs) |ref| {
-            sum +%= reference_tile_cache.ref_tc_remove_obstacle(cache, ref);
+            sum +%= removeObstacle(cache, ref);
         }
         sum +%= referenceSettle(context);
         return sum +% context.referencePolyCount();
     }
 
     fn referenceSettle(context: *Context) u64 {
+        const update = opaqueFn(reference_tile_cache.ref_tc_update);
         var sum: u64 = 0;
         for (0..update_call_max) |_| {
             var up_to_date = false;
-            sum +%= reference_tile_cache.ref_tc_update(
+            sum +%= update(
                 context.reference_cache,
                 0,
                 context.reference_nav,
@@ -462,23 +471,26 @@ const Context = struct {
     }
 
     fn portObstacles(context: *Context) u64 {
+        const addObstacle = opaqueFn(detour.TileCache.addObstacle);
+        const removeObstacle = opaqueFn(detour.TileCache.removeObstacle);
         const cache = &context.cache;
         var sum: u64 = 0;
         for (context.obstacle_points, &context.obstacle_refs) |point, *ref| {
-            sum +%= statusSum(cache.addObstacle(point, 1.0, 2.0, ref));
+            sum +%= statusSum(addObstacle(cache, point, 1.0, 2.0, ref));
             sum +%= ref.*;
         }
         sum +%= portSettle(context);
-        for (context.obstacle_refs) |ref| sum +%= statusSum(cache.removeObstacle(ref));
+        for (context.obstacle_refs) |ref| sum +%= statusSum(removeObstacle(cache, ref));
         sum +%= portSettle(context);
         return sum +% context.portPolyCount();
     }
 
     fn portSettle(context: *Context) u64 {
+        const update = opaqueFn(detour.TileCache.update);
         var sum: u64 = 0;
         for (0..update_call_max) |_| {
             var up_to_date = false;
-            sum +%= statusSum(context.cache.update(0, &context.nav, &up_to_date));
+            sum +%= statusSum(update(&context.cache, 0, &context.nav, &up_to_date));
             if (up_to_date) break;
         }
         return sum;
@@ -487,11 +499,13 @@ const Context = struct {
     // Every tile taken out of the cache and given back, its bytes staying
     // the caller's.
     fn baselineAddRemoveTile(context: *Context) u64 {
+        const removeTile = opaqueFn(reference_tile_cache.ref_tc_remove_tile);
+        const addTile = opaqueFn(reference_tile_cache.ref_tc_add_tile);
         var sum: u64 = 0;
         for (context.layers, context.reference_refs) |layer, *ref| {
             const cache = context.reference_cache;
-            sum +%= reference_tile_cache.ref_tc_remove_tile(cache, ref.*, null, null);
-            sum +%= reference_tile_cache.ref_tc_add_tile(
+            sum +%= removeTile(cache, ref.*, null, null);
+            sum +%= addTile(
                 context.reference_cache,
                 layer.reference_bytes.ptr,
                 @intCast(layer.reference_bytes.len),
@@ -504,10 +518,12 @@ const Context = struct {
     }
 
     fn portAddRemoveTile(context: *Context) u64 {
+        const removeTile = opaqueFn(detour.TileCache.removeTile);
+        const addTile = opaqueFn(detour.TileCache.addTile);
         var sum: u64 = 0;
         for (context.layers, context.refs) |layer, *ref| {
-            sum +%= statusSum(context.cache.removeTile(ref.*, null));
-            sum +%= statusSum(context.cache.addTile(layer.port_bytes, 0, ref));
+            sum +%= statusSum(removeTile(&context.cache, ref.*, null));
+            sum +%= statusSum(addTile(&context.cache, layer.port_bytes, 0, ref));
             sum +%= ref.*;
         }
         return sum;
@@ -515,11 +531,12 @@ const Context = struct {
 
     // The tiles a box of 10 m by 10 m around each ground point touches.
     fn baselineQueryTiles(context: *Context) u64 {
+        const queryTiles = opaqueFn(reference_tile_cache.ref_tc_query_tiles);
         var sum: u64 = 0;
         var results: [64]u32 = undefined;
         var count: i32 = 0;
         for (&context.box_mins, &context.box_maxs) |*low, *high| {
-            sum +%= reference_tile_cache.ref_tc_query_tiles(
+            sum +%= queryTiles(
                 context.reference_cache,
                 low,
                 high,
@@ -534,11 +551,12 @@ const Context = struct {
     }
 
     fn portQueryTiles(context: *Context) u64 {
+        const queryTiles = opaqueFn(detour.TileCache.queryTiles);
         var sum: u64 = 0;
         var results: [64]u32 = undefined;
         var count: usize = 0;
         for (&context.box_mins, &context.box_maxs) |*low, *high| {
-            sum +%= statusSum(context.cache.queryTiles(low.*, high.*, &results, &count));
+            sum +%= statusSum(queryTiles(&context.cache, low.*, high.*, &results, &count));
             sum +%= count;
             if (count > 0) sum +%= results[count - 1];
         }

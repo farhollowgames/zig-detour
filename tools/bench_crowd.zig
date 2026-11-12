@@ -5,6 +5,7 @@
 const std = @import("std");
 const support = @import("support");
 const Bench = @import("bench.zig").Bench;
+const opaqueFn = @import("bench.zig").opaqueFn;
 
 const detour = support.detour;
 const reference = support.reference;
@@ -319,38 +320,55 @@ const CrowdContext = struct {
     }
 
     fn baselineUpdate(context: *CrowdContext) u64 {
+        const update = opaqueFn(reference_crowd.ref_crowd_update);
+        const getVelocitySampleCount = opaqueFn(
+            reference_crowd.ref_crowd_get_velocity_sample_count,
+        );
+        const getAgent = opaqueFn(reference_crowd.ref_crowd_get_agent);
+        const agentCorridor = opaqueFn(reference_crowd.ref_crowd_agent_corridor);
+        const getPos = opaqueFn(reference_crowd.ref_corridor_get_pos);
+        const getTarget = opaqueFn(reference_crowd.ref_corridor_get_target);
+        const getPathCount = opaqueFn(reference_crowd.ref_corridor_get_path_count);
+        const getFirstPoly = opaqueFn(reference_crowd.ref_corridor_get_first_poly);
         const crowd = context.original_crowd;
         var sum: u64 = 0;
         for (0..update_count) |_| {
-            reference_crowd.ref_crowd_update(crowd, update_step, -1, null);
-            sum +%= countSum(reference_crowd.ref_crowd_get_velocity_sample_count(crowd));
+            update(crowd, update_step, -1, null);
+            sum +%= countSum(getVelocitySampleCount(crowd));
         }
         // Where every agent ended up says what all the updates did to it.
         for (0..context.agent_count) |i| {
-            const agent = reference_crowd.ref_crowd_get_agent(crowd, @intCast(i)).?;
-            const corridor = reference_crowd.ref_crowd_agent_corridor(agent);
-            sum +%= pointSum(reference_crowd.ref_corridor_get_pos(corridor).*);
-            sum +%= pointSum(reference_crowd.ref_corridor_get_target(corridor).*);
-            sum +%= countSum(reference_crowd.ref_corridor_get_path_count(corridor));
-            sum +%= reference_crowd.ref_corridor_get_first_poly(corridor);
+            const agent = getAgent(crowd, @intCast(i)).?;
+            const corridor = agentCorridor(agent);
+            sum +%= pointSum(getPos(corridor).*);
+            sum +%= pointSum(getTarget(corridor).*);
+            sum +%= countSum(getPathCount(corridor));
+            sum +%= getFirstPoly(corridor);
         }
         return sum;
     }
 
     fn portUpdate(context: *CrowdContext) u64 {
+        const update = opaqueFn(detour.Crowd.update);
+        const getVelocitySampleCount = opaqueFn(detour.Crowd.getVelocitySampleCount);
+        const getAgent = opaqueFn(detour.Crowd.getAgent);
+        const getPos = opaqueFn(detour.PathCorridor.getPos);
+        const getTarget = opaqueFn(detour.PathCorridor.getTarget);
+        const getPathCount = opaqueFn(detour.PathCorridor.getPathCount);
+        const getFirstPoly = opaqueFn(detour.PathCorridor.getFirstPoly);
         const crowd = &context.crowd;
         var sum: u64 = 0;
         for (0..update_count) |_| {
-            crowd.update(update_step, null);
-            sum +%= countSum(crowd.getVelocitySampleCount());
+            update(crowd, update_step, null);
+            sum +%= countSum(getVelocitySampleCount(crowd));
         }
         // Where every agent ended up says what all the updates did to it.
         for (0..context.agent_count) |i| {
-            const corridor = &crowd.getAgent(@intCast(i)).?.corridor;
-            sum +%= pointSum(corridor.getPos());
-            sum +%= pointSum(corridor.getTarget());
-            sum +%= countSum(corridor.getPathCount());
-            sum +%= corridor.getFirstPoly();
+            const corridor = &getAgent(crowd, @intCast(i)).?.corridor;
+            sum +%= pointSum(getPos(corridor));
+            sum +%= pointSum(getTarget(corridor));
+            sum +%= countSum(getPathCount(corridor));
+            sum +%= getFirstPoly(corridor);
         }
         return sum;
     }
@@ -449,26 +467,31 @@ const AgentContext = struct {
     }
 
     fn baselineAddRemove(context: *AgentContext) u64 {
+        const addAgent = opaqueFn(reference_crowd.ref_crowd_add_agent);
+        const getFirstPoly = opaqueFn(reference_crowd.ref_corridor_get_first_poly);
+        const getPos = opaqueFn(reference_crowd.ref_corridor_get_pos);
+        const removeAgent = opaqueFn(reference_crowd.ref_crowd_remove_agent);
+        const getActiveAgents = opaqueFn(reference_crowd.ref_crowd_get_active_agents);
         const crowd = context.original_crowd;
         var sum: u64 = 0;
         for (0..agent_batch_count) |_| {
             for (context.places.points[0..crowd_agent_count_max]) |*point| {
-                const idx = reference_crowd.ref_crowd_add_agent(
+                const idx = addAgent(
                     crowd,
                     point,
                     &context.original_params,
                 );
                 const corridor = context.original_corridors[@intCast(idx)];
                 sum +%= countSum(idx);
-                sum +%= reference_crowd.ref_corridor_get_first_poly(corridor);
-                sum +%= pointSum(reference_crowd.ref_corridor_get_pos(corridor).*);
+                sum +%= getFirstPoly(corridor);
+                sum +%= pointSum(getPos(corridor).*);
             }
             for (0..crowd_agent_count_max) |i| {
-                reference_crowd.ref_crowd_remove_agent(crowd, @intCast(i));
+                removeAgent(crowd, @intCast(i));
             }
         }
         // No agent is left when every one added was removed.
-        sum +%= countSum(reference_crowd.ref_crowd_get_active_agents(
+        sum +%= countSum(getActiveAgents(
             crowd,
             &context.original_active,
             crowd_agent_count_max,
@@ -477,31 +500,39 @@ const AgentContext = struct {
     }
 
     fn portAddRemove(context: *AgentContext) u64 {
+        const addAgent = opaqueFn(detour.Crowd.addAgent);
+        const getAgent = opaqueFn(detour.Crowd.getAgent);
+        const removeAgent = opaqueFn(detour.Crowd.removeAgent);
+        const getActiveAgents = opaqueFn(detour.Crowd.getActiveAgents);
+        const getFirstPoly = opaqueFn(detour.PathCorridor.getFirstPoly);
+        const getPos = opaqueFn(detour.PathCorridor.getPos);
         const crowd = &context.crowd;
         var sum: u64 = 0;
         for (0..agent_batch_count) |_| {
             for (context.places.points[0..crowd_agent_count_max]) |*point| {
-                const idx = crowd.addAgent(point.*, &context.params);
-                const corridor = &crowd.getAgent(idx).?.corridor;
+                const idx = addAgent(crowd, point.*, &context.params);
+                const corridor = &getAgent(crowd, idx).?.corridor;
                 sum +%= countSum(idx);
-                sum +%= corridor.getFirstPoly();
-                sum +%= pointSum(corridor.getPos());
+                sum +%= getFirstPoly(corridor);
+                sum +%= pointSum(getPos(corridor));
             }
             for (0..crowd_agent_count_max) |i| {
-                crowd.removeAgent(@intCast(i));
+                removeAgent(crowd, @intCast(i));
             }
         }
         // No agent is left when every one added was removed.
-        sum +%= countSum(crowd.getActiveAgents(&context.active));
+        sum +%= countSum(getActiveAgents(crowd, &context.active));
         return sum;
     }
 
     fn baselineRequestMoveTarget(context: *AgentContext) u64 {
+        const requestMoveTarget = opaqueFn(reference_crowd.ref_crowd_request_move_target);
+        const agentSnapshot = opaqueFn(reference_crowd.ref_crowd_agent_snapshot);
         const crowd = context.original_crowd;
         const places = context.places;
         var sum: u64 = 0;
         for (&context.request_agents, &context.request_places) |*agent, *place| {
-            sum +%= @intFromBool(reference_crowd.ref_crowd_request_move_target(
+            sum +%= @intFromBool(requestMoveTarget(
                 crowd,
                 agent.*,
                 places.refs[place.*],
@@ -511,7 +542,7 @@ const AgentContext = struct {
         // The original shows an agent's target only in a snapshot, which
         // copies the whole agent, so one agent is read: the last one set.
         const last = context.request_agents[request_count - 1];
-        _ = reference_crowd.ref_crowd_agent_snapshot(crowd, last, &context.snapshot);
+        _ = agentSnapshot(crowd, last, &context.snapshot);
         sum +%= context.snapshot.target_ref;
         sum +%= pointSum(context.snapshot.target_pos);
         sum +%= context.snapshot.target_state;
@@ -519,17 +550,20 @@ const AgentContext = struct {
     }
 
     fn portRequestMoveTarget(context: *AgentContext) u64 {
+        const requestMoveTarget = opaqueFn(detour.Crowd.requestMoveTarget);
+        const getAgent = opaqueFn(detour.Crowd.getAgent);
         const crowd = &context.crowd;
         const places = context.places;
         var sum: u64 = 0;
         for (&context.request_agents, &context.request_places) |*agent, *place| {
-            sum +%= @intFromBool(crowd.requestMoveTarget(
+            sum +%= @intFromBool(requestMoveTarget(
+                crowd,
                 agent.*,
                 places.refs[place.*],
                 places.points[place.*],
             ));
         }
-        const last = crowd.getAgent(context.request_agents[request_count - 1]).?;
+        const last = getAgent(crowd, context.request_agents[request_count - 1]).?;
         sum +%= last.target_ref;
         sum +%= pointSum(last.target_pos);
         sum +%= @backingInt(last.target_state);
@@ -775,10 +809,11 @@ const AvoidanceContext = struct {
     }
 
     fn baselineSampleVelocityGrid(context: *AvoidanceContext) u64 {
+        const sampleVelocityGrid = opaqueFn(reference_crowd.ref_oa_query_sample_velocity_grid);
         var sum: u64 = 0;
         var nvel: [3]f32 = @splat(0);
         for (context.original_queries, context.situations) |query, *situation| {
-            sum +%= countSum(reference_crowd.ref_oa_query_sample_velocity_grid(
+            sum +%= countSum(sampleVelocityGrid(
                 query,
                 &situation.position,
                 agent_radius,
@@ -795,10 +830,12 @@ const AvoidanceContext = struct {
     }
 
     fn portSampleVelocityGrid(context: *AvoidanceContext) u64 {
+        const sampleVelocityGrid = opaqueFn(detour.ObstacleAvoidanceQuery.sampleVelocityGrid);
         var sum: u64 = 0;
         var nvel: [3]f32 = @splat(0);
         for (context.queries, context.situations) |*query, *situation| {
-            sum +%= countSum(query.sampleVelocityGrid(
+            sum +%= countSum(sampleVelocityGrid(
+                query,
                 situation.position,
                 agent_radius,
                 situation.desired_speed,
@@ -814,10 +851,13 @@ const AvoidanceContext = struct {
     }
 
     fn baselineSampleVelocityAdaptive(context: *AvoidanceContext) u64 {
+        const sampleVelocityAdaptive = opaqueFn(
+            reference_crowd.ref_oa_query_sample_velocity_adaptive,
+        );
         var sum: u64 = 0;
         var nvel: [3]f32 = @splat(0);
         for (context.original_queries, context.situations) |query, *situation| {
-            sum +%= countSum(reference_crowd.ref_oa_query_sample_velocity_adaptive(
+            sum +%= countSum(sampleVelocityAdaptive(
                 query,
                 &situation.position,
                 agent_radius,
@@ -834,10 +874,14 @@ const AvoidanceContext = struct {
     }
 
     fn portSampleVelocityAdaptive(context: *AvoidanceContext) u64 {
+        const sampleVelocityAdaptive = opaqueFn(
+            detour.ObstacleAvoidanceQuery.sampleVelocityAdaptive,
+        );
         var sum: u64 = 0;
         var nvel: [3]f32 = @splat(0);
         for (context.queries, context.situations) |*query, *situation| {
-            sum +%= countSum(query.sampleVelocityAdaptive(
+            sum +%= countSum(sampleVelocityAdaptive(
+                query,
                 situation.position,
                 agent_radius,
                 situation.desired_speed,
@@ -853,14 +897,25 @@ const AvoidanceContext = struct {
     }
 
     fn baselineAdd(context: *AvoidanceContext) u64 {
+        const reset = opaqueFn(reference_crowd.ref_oa_query_reset);
+        const addCircle = opaqueFn(reference_crowd.ref_oa_query_add_circle);
+        const addSegment = opaqueFn(reference_crowd.ref_oa_query_add_segment);
+        const getObstacleCircleCount = opaqueFn(
+            reference_crowd.ref_oa_query_get_obstacle_circle_count,
+        );
+        const getObstacleSegmentCount = opaqueFn(
+            reference_crowd.ref_oa_query_get_obstacle_segment_count,
+        );
+        const getObstacleCircle = opaqueFn(reference_crowd.ref_oa_query_get_obstacle_circle);
+        const getObstacleSegment = opaqueFn(reference_crowd.ref_oa_query_get_obstacle_segment);
         const query = context.original_add_query;
         var sum: u64 = 0;
         var first: usize = 0;
         while (first < situation_count) : (first += add_batch_size) {
-            reference_crowd.ref_oa_query_reset(query);
+            reset(query);
             for (context.situations[first..][0..add_batch_size]) |*situation| {
                 for (&situation.circles) |*circle| {
-                    reference_crowd.ref_oa_query_add_circle(
+                    addCircle(
                         query,
                         &circle.position,
                         agent_radius,
@@ -869,35 +924,47 @@ const AvoidanceContext = struct {
                     );
                 }
                 for (&situation.segments) |*segment| {
-                    reference_crowd.ref_oa_query_add_segment(query, &segment[0], &segment[1]);
+                    addSegment(query, &segment[0], &segment[1]);
                 }
             }
             // The counts are right only when the reset emptied the query
             // and every obstacle of the batch went in.
-            sum +%= countSum(reference_crowd.ref_oa_query_get_obstacle_circle_count(query));
-            sum +%= countSum(reference_crowd.ref_oa_query_get_obstacle_segment_count(query));
+            sum +%= countSum(getObstacleCircleCount(query));
+            sum +%= countSum(getObstacleSegmentCount(query));
         }
         // The last obstacles added, as the query holds them.
         const circle = &context.original_circle;
         const segment = &context.original_segment;
         const last_circle = add_batch_size * situation_circle_count - 1;
         const last_segment = add_batch_size * situation_segment_count - 1;
-        _ = reference_crowd.ref_oa_query_get_obstacle_circle(query, last_circle, circle);
-        _ = reference_crowd.ref_oa_query_get_obstacle_segment(query, last_segment, segment);
+        _ = getObstacleCircle(query, last_circle, circle);
+        _ = getObstacleSegment(query, last_segment, segment);
         sum +%= pointSum(circle.p) +% pointSum(circle.vel) +% pointSum(circle.dvel);
         sum +%= floatSum(circle.rad) +% pointSum(segment.p) +% pointSum(segment.q);
         return sum;
     }
 
     fn portAdd(context: *AvoidanceContext) u64 {
+        const reset = opaqueFn(detour.ObstacleAvoidanceQuery.reset);
+        const addCircle = opaqueFn(detour.ObstacleAvoidanceQuery.addCircle);
+        const addSegment = opaqueFn(detour.ObstacleAvoidanceQuery.addSegment);
+        const getObstacleCircleCount = opaqueFn(
+            detour.ObstacleAvoidanceQuery.getObstacleCircleCount,
+        );
+        const getObstacleSegmentCount = opaqueFn(
+            detour.ObstacleAvoidanceQuery.getObstacleSegmentCount,
+        );
+        const getObstacleCircle = opaqueFn(detour.ObstacleAvoidanceQuery.getObstacleCircle);
+        const getObstacleSegment = opaqueFn(detour.ObstacleAvoidanceQuery.getObstacleSegment);
         const query = &context.add_query;
         var sum: u64 = 0;
         var first: usize = 0;
         while (first < situation_count) : (first += add_batch_size) {
-            query.reset();
+            reset(query);
             for (context.situations[first..][0..add_batch_size]) |*situation| {
                 for (&situation.circles) |*circle| {
-                    query.addCircle(
+                    addCircle(
+                        query,
                         circle.position,
                         agent_radius,
                         circle.velocity,
@@ -905,17 +972,17 @@ const AvoidanceContext = struct {
                     );
                 }
                 for (&situation.segments) |*segment| {
-                    query.addSegment(segment[0], segment[1]);
+                    addSegment(query, segment[0], segment[1]);
                 }
             }
             // The counts are right only when the reset emptied the query
             // and every obstacle of the batch went in.
-            sum +%= countSum(query.getObstacleCircleCount());
-            sum +%= countSum(query.getObstacleSegmentCount());
+            sum +%= countSum(getObstacleCircleCount(query));
+            sum +%= countSum(getObstacleSegmentCount(query));
         }
         // The last obstacles added, as the query holds them.
-        const circle = query.getObstacleCircle(add_batch_size * situation_circle_count - 1);
-        const segment = query.getObstacleSegment(add_batch_size * situation_segment_count - 1);
+        const circle = getObstacleCircle(query, add_batch_size * situation_circle_count - 1);
+        const segment = getObstacleSegment(query, add_batch_size * situation_segment_count - 1);
         sum +%= pointSum(circle.position) +% pointSum(circle.velocity);
         sum +%= pointSum(circle.desired_velocity);
         sum +%= floatSum(circle.radius) +% pointSum(segment.p) +% pointSum(segment.q);
@@ -1105,13 +1172,15 @@ const PartsContext = struct {
 
     /// Sets the original's corridor to pair `i`'s path, at its start.
     fn originalSetCorridor(self: *PartsContext, i: usize) void {
+        const reset = opaqueFn(reference_crowd.ref_corridor_reset);
+        const setCorridor = opaqueFn(reference_crowd.ref_corridor_set_corridor);
         const places = self.places;
-        reference_crowd.ref_corridor_reset(
+        reset(
             self.original_corridor,
             places.refs[i],
             &places.points[i],
         );
-        reference_crowd.ref_corridor_set_corridor(
+        setCorridor(
             self.original_corridor,
             &places.points[i + pair_count],
             &self.paths[i],
@@ -1121,33 +1190,44 @@ const PartsContext = struct {
 
     /// Sets the port's corridor to pair `i`'s path, at its start.
     fn portSetCorridor(self: *PartsContext, i: usize) void {
+        const reset = opaqueFn(detour.PathCorridor.reset);
+        const setCorridor = opaqueFn(detour.PathCorridor.setCorridor);
         const places = self.places;
-        self.corridor.reset(places.refs[i], places.points[i]);
+        reset(&self.corridor, places.refs[i], places.points[i]);
         const path = self.paths[i][0..self.path_counts[i]];
-        self.corridor.setCorridor(places.points[i + pair_count], path);
+        setCorridor(&self.corridor, places.points[i + pair_count], path);
     }
 
     /// What the original's corridor adds to a checksum: its position and
     /// the length and ends of its path.
     fn originalCorridorSum(self: *const PartsContext) u64 {
+        const getPos = opaqueFn(reference_crowd.ref_corridor_get_pos);
+        const getPathCount = opaqueFn(reference_crowd.ref_corridor_get_path_count);
+        const getFirstPoly = opaqueFn(reference_crowd.ref_corridor_get_first_poly);
+        const getLastPoly = opaqueFn(reference_crowd.ref_corridor_get_last_poly);
         const corridor = self.original_corridor;
-        return pointSum(reference_crowd.ref_corridor_get_pos(corridor).*) +%
-            countSum(reference_crowd.ref_corridor_get_path_count(corridor)) +%
-            reference_crowd.ref_corridor_get_first_poly(corridor) +%
-            reference_crowd.ref_corridor_get_last_poly(corridor);
+        return pointSum(getPos(corridor).*) +%
+            countSum(getPathCount(corridor)) +%
+            getFirstPoly(corridor) +%
+            getLastPoly(corridor);
     }
 
     fn portCorridorSum(self: *const PartsContext) u64 {
+        const getPos = opaqueFn(detour.PathCorridor.getPos);
+        const getPathCount = opaqueFn(detour.PathCorridor.getPathCount);
+        const getFirstPoly = opaqueFn(detour.PathCorridor.getFirstPoly);
+        const getLastPoly = opaqueFn(detour.PathCorridor.getLastPoly);
         const corridor = &self.corridor;
-        return pointSum(corridor.getPos()) +% countSum(corridor.getPathCount()) +%
-            corridor.getFirstPoly() +% corridor.getLastPoly();
+        return pointSum(getPos(corridor)) +% countSum(getPathCount(corridor)) +%
+            getFirstPoly(corridor) +% getLastPoly(corridor);
     }
 
     fn baselineFindCorners(context: *PartsContext) u64 {
+        const findCorners = opaqueFn(reference_crowd.ref_corridor_find_corners);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.originalSetCorridor(i);
-            const n = reference_crowd.ref_corridor_find_corners(
+            const n = findCorners(
                 context.original_corridor,
                 @ptrCast(&context.corner_points),
                 &context.original_corner_flags,
@@ -1166,10 +1246,12 @@ const PartsContext = struct {
     }
 
     fn portFindCorners(context: *PartsContext) u64 {
+        const findCorners = opaqueFn(detour.PathCorridor.findCorners);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.portSetCorridor(i);
-            const n = context.corridor.findCorners(
+            const n = findCorners(
+                &context.corridor,
                 &context.corner_points,
                 &context.corner_flags,
                 &context.corner_refs,
@@ -1186,10 +1268,11 @@ const PartsContext = struct {
     }
 
     fn baselineMovePosition(context: *PartsContext) u64 {
+        const movePosition = opaqueFn(reference_crowd.ref_corridor_move_position);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.originalSetCorridor(i);
-            const moved = reference_crowd.ref_corridor_move_position(
+            const moved = movePosition(
                 context.original_corridor,
                 &context.steps[i],
                 context.original_query,
@@ -1202,10 +1285,12 @@ const PartsContext = struct {
     }
 
     fn portMovePosition(context: *PartsContext) u64 {
+        const movePosition = opaqueFn(detour.PathCorridor.movePosition);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.portSetCorridor(i);
-            const moved = context.corridor.movePosition(
+            const moved = movePosition(
+                &context.corridor,
                 context.steps[i],
                 &context.query,
                 &context.filter,
@@ -1217,10 +1302,13 @@ const PartsContext = struct {
     }
 
     fn baselineOptimizeVisibility(context: *PartsContext) u64 {
+        const optimizePathVisibility = opaqueFn(
+            reference_crowd.ref_corridor_optimize_path_visibility,
+        );
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.originalSetCorridor(i);
-            reference_crowd.ref_corridor_optimize_path_visibility(
+            optimizePathVisibility(
                 context.original_corridor,
                 &context.lookaheads[i],
                 path_optimization_range,
@@ -1233,10 +1321,12 @@ const PartsContext = struct {
     }
 
     fn portOptimizeVisibility(context: *PartsContext) u64 {
+        const optimizePathVisibility = opaqueFn(detour.PathCorridor.optimizePathVisibility);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.portSetCorridor(i);
-            context.corridor.optimizePathVisibility(
+            optimizePathVisibility(
+                &context.corridor,
                 context.lookaheads[i],
                 path_optimization_range,
                 &context.query,
@@ -1248,10 +1338,11 @@ const PartsContext = struct {
     }
 
     fn baselineOptimizeTopology(context: *PartsContext) u64 {
+        const optimizePathTopology = opaqueFn(reference_crowd.ref_corridor_optimize_path_topology);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.originalSetCorridor(i);
-            const changed = reference_crowd.ref_corridor_optimize_path_topology(
+            const changed = optimizePathTopology(
                 context.original_corridor,
                 context.original_query,
                 context.original_filter,
@@ -1263,10 +1354,15 @@ const PartsContext = struct {
     }
 
     fn portOptimizeTopology(context: *PartsContext) u64 {
+        const optimizePathTopology = opaqueFn(detour.PathCorridor.optimizePathTopology);
         var sum: u64 = 0;
         for (0..pair_count) |i| {
             context.portSetCorridor(i);
-            const changed = context.corridor.optimizePathTopology(&context.query, &context.filter);
+            const changed = optimizePathTopology(
+                &context.corridor,
+                &context.query,
+                &context.filter,
+            );
             sum +%= @intFromBool(changed);
             sum +%= context.portCorridorSum();
         }
@@ -1274,10 +1370,13 @@ const PartsContext = struct {
     }
 
     fn baselineBoundary(context: *PartsContext) u64 {
+        const update = opaqueFn(reference_crowd.ref_local_boundary_update);
+        const getSegmentCount = opaqueFn(reference_crowd.ref_local_boundary_get_segment_count);
+        const getSegment = opaqueFn(reference_crowd.ref_local_boundary_get_segment);
         const boundary = context.original_boundary;
         var sum: u64 = 0;
         for (&context.places.points, context.places.refs) |*point, ref| {
-            reference_crowd.ref_local_boundary_update(
+            update(
                 boundary,
                 ref,
                 point,
@@ -1285,10 +1384,10 @@ const PartsContext = struct {
                 context.original_query,
                 context.original_filter,
             );
-            const n = reference_crowd.ref_local_boundary_get_segment_count(boundary);
+            const n = getSegmentCount(boundary);
             sum +%= countSum(n);
             if (n > 0) {
-                const segment = reference_crowd.ref_local_boundary_get_segment(boundary, n - 1);
+                const segment = getSegment(boundary, n - 1);
                 for (segment) |value| sum +%= floatSum(value);
             }
         }
@@ -1296,20 +1395,24 @@ const PartsContext = struct {
     }
 
     fn portBoundary(context: *PartsContext) u64 {
+        const update = opaqueFn(detour.LocalBoundary.update);
+        const getSegmentCount = opaqueFn(detour.LocalBoundary.getSegmentCount);
+        const getSegment = opaqueFn(detour.LocalBoundary.getSegment);
         const boundary = &context.boundary;
         var sum: u64 = 0;
         for (&context.places.points, context.places.refs) |*point, ref| {
-            boundary.update(
+            update(
+                boundary,
                 ref,
                 point.*,
                 collision_query_range,
                 &context.query,
                 &context.filter,
             );
-            const n = boundary.getSegmentCount();
+            const n = getSegmentCount(boundary);
             sum +%= countSum(n);
             if (n > 0) {
-                const segment = boundary.getSegment(n - 1);
+                const segment = getSegment(boundary, n - 1);
                 sum +%= pointSum(segment[0]) +% pointSum(segment[1]);
             }
         }
@@ -1317,12 +1420,15 @@ const PartsContext = struct {
     }
 
     fn baselineGrid(context: *PartsContext) u64 {
+        const clear = opaqueFn(reference_crowd.ref_prox_grid_clear);
+        const addItem = opaqueFn(reference_crowd.ref_prox_grid_add_item);
+        const queryItems = opaqueFn(reference_crowd.ref_prox_grid_query_items);
         const grid = context.original_grid;
         const points = context.places.points[0..crowd_agent_count_max];
         var sum: u64 = 0;
-        reference_crowd.ref_prox_grid_clear(grid);
+        clear(grid);
         for (points, 0..) |point, i| {
-            reference_crowd.ref_prox_grid_add_item(
+            addItem(
                 grid,
                 @intCast(i),
                 point[0] - agent_radius,
@@ -1332,7 +1438,7 @@ const PartsContext = struct {
             );
         }
         for (points) |point| {
-            const n = reference_crowd.ref_prox_grid_query_items(
+            const n = queryItems(
                 grid,
                 point[0] - collision_query_range,
                 point[2] - collision_query_range,
@@ -1348,12 +1454,16 @@ const PartsContext = struct {
     }
 
     fn portGrid(context: *PartsContext) u64 {
+        const clear = opaqueFn(detour.ProximityGrid.clear);
+        const addItem = opaqueFn(detour.ProximityGrid.addItem);
+        const queryItems = opaqueFn(detour.ProximityGrid.queryItems);
         const grid = &context.grid;
         const points = context.places.points[0..crowd_agent_count_max];
         var sum: u64 = 0;
-        grid.clear();
+        clear(grid);
         for (points, 0..) |point, i| {
-            grid.addItem(
+            addItem(
+                grid,
                 @intCast(i),
                 point[0] - agent_radius,
                 point[2] - agent_radius,
@@ -1362,7 +1472,8 @@ const PartsContext = struct {
             );
         }
         for (points) |point| {
-            const n = grid.queryItems(
+            const n = queryItems(
+                grid,
                 point[0] - collision_query_range,
                 point[2] - collision_query_range,
                 point[0] + collision_query_range,
@@ -1376,6 +1487,10 @@ const PartsContext = struct {
     }
 
     fn baselineQueue(context: *PartsContext) u64 {
+        const request = opaqueFn(reference_crowd.ref_path_queue_request);
+        const update = opaqueFn(reference_crowd.ref_path_queue_update);
+        const getRequestStatus = opaqueFn(reference_crowd.ref_path_queue_get_request_status);
+        const getPathResult = opaqueFn(reference_crowd.ref_path_queue_get_path_result);
         const queue = context.original_queue;
         const places = context.places;
         var sum: u64 = 0;
@@ -1383,7 +1498,7 @@ const PartsContext = struct {
         while (first < pair_count) : (first += queue_request_count) {
             var handles: [queue_request_count]u32 = undefined;
             for (&handles, first..) |*handle, i| {
-                handle.* = reference_crowd.ref_path_queue_request(
+                handle.* = request(
                     queue,
                     places.refs[i],
                     places.refs[i + pair_count],
@@ -1396,15 +1511,15 @@ const PartsContext = struct {
             var read: [queue_request_count]bool = @splat(false);
             for (0..queue_update_count_max) |_| {
                 if (waiting == 0) break;
-                reference_crowd.ref_path_queue_update(queue, queue_iteration_count);
+                update(queue, queue_iteration_count);
                 for (handles, &read) |handle, *done| {
                     if (done.*) continue;
                     const status: detour.Status = @bitCast(
-                        reference_crowd.ref_path_queue_get_request_status(queue, handle),
+                        getRequestStatus(queue, handle),
                     );
                     if (status.in_progress) continue;
                     var size: i32 = 0;
-                    sum +%= reference_crowd.ref_path_queue_get_path_result(
+                    sum +%= getPathResult(
                         queue,
                         handle,
                         &context.result_path,
@@ -1422,6 +1537,10 @@ const PartsContext = struct {
     }
 
     fn portQueue(context: *PartsContext) u64 {
+        const request = opaqueFn(detour.PathQueue.request);
+        const update = opaqueFn(detour.PathQueue.update);
+        const getRequestStatus = opaqueFn(detour.PathQueue.getRequestStatus);
+        const getPathResult = opaqueFn(detour.PathQueue.getPathResult);
         const queue = &context.queue;
         const places = context.places;
         var sum: u64 = 0;
@@ -1429,7 +1548,8 @@ const PartsContext = struct {
         while (first < pair_count) : (first += queue_request_count) {
             var handles: [queue_request_count]u32 = undefined;
             for (&handles, first..) |*handle, i| {
-                handle.* = queue.request(
+                handle.* = request(
+                    queue,
                     places.refs[i],
                     places.refs[i + pair_count],
                     places.points[i],
@@ -1441,12 +1561,12 @@ const PartsContext = struct {
             var read: [queue_request_count]bool = @splat(false);
             for (0..queue_update_count_max) |_| {
                 if (waiting == 0) break;
-                queue.update(queue_iteration_count);
+                update(queue, queue_iteration_count);
                 for (handles, &read) |handle, *done| {
                     if (done.*) continue;
-                    if (queue.getRequestStatus(handle).in_progress) continue;
+                    if (getRequestStatus(queue, handle).in_progress) continue;
                     var size: usize = 0;
-                    sum +%= statusSum(queue.getPathResult(handle, &context.result_path, &size));
+                    sum +%= statusSum(getPathResult(queue, handle, &context.result_path, &size));
                     sum +%= size;
                     if (size > 0) sum +%= context.result_path[size - 1];
                     done.* = true;

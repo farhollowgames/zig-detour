@@ -586,7 +586,24 @@ design's tolerances.
 
 ## Next
 
-1. The performance pass, by a fresh agent: the rows where the port is slower
-   (`closestHeightOnTriangle`, `navMeshDataSwapEndian`, `overlapPolyPoly2d`,
-   `NavMesh.addTile`, the tile cache rows) and the integer queries.
-2. The skeptic and the fixes, by fresh agents.
+The performance pass and the skeptic are done (branches `review/perf-and-skeptic`,
+`review/skeptic`). The fixes are on `review/fixes`:
+
+- done: every bench row calls each timed function on both sides through `opaqueFn`
+  (`tools/bench.zig`); the integer tests' limits are rates set just above the worst
+  over fuzz seeds 0 to 31, Debug and ReleaseSafe the same, the measured worst beside
+  each; findPath partial results that stop at other polygons are held by their distance
+  to the end; the walkability check of findStraightPath steps past a ray along a wall
+  at 45 degrees (test of the seed-8 leg); crossings compared one by one under the
+  design's rules; `tileInUnits` and a test of `tileFromFloat` at other scales.
+- open, for the author: five cases need a tolerance or rule the design does not state
+  and fail under some seeds of 1 to 31 (`doc/TESTING.md` lists them with their seeds):
+  raycast's cost on grazing hits, moveAlongSurface's visited list at a shared-edge
+  tie, findDistanceToWall's normal between two near walls, findStraightPath's end at
+  an edge-vertex tie (seed 3), and findPath on seed 13 (integer corridor 2.7% cheaper).
+- to do: a quiet benchmark (three runs pinned with `taskset -c 6`, load under 3), then
+  the tables of `doc/BENCHMARKS.md` and the ratios in `README.md`, and the "Where the
+  port is slower" text (`closestHeightOnTriangle` is no longer inlined into its row).
+- release, once every test passes on seeds 0 to 31 in Debug and ReleaseSafe: merge
+  `review/fixes` into `main`, mark this file's entries reviewed, put `#v0.1.0` in the
+  README's install line, tag `v0.1.0` (annotated) and push `main` and the tag.

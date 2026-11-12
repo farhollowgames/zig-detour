@@ -51,16 +51,22 @@ original, and in the last table the float port.
 
 ## Known biases
 
-- The original is reached through a thin C function per call, built
-  separately, so each call of the original costs one more call than the
-  port's, which the compiler can inline into the timing loop. The row
-  "calibration: one call through the C interface" times that call alone,
-  through a C function that does nothing: 0.8 ns on the original's side.
-  On rows of a few nanoseconds (the navigation mesh lookups, the geometry
-  helpers, `isValidPolyRef`, `requestMoveTarget`) that is a large part of the
-  difference; subtracting 0.8 ns from the original's time gives a fairer
-  ratio there. Rows of a whole query, a crowd update or a tile rebuild are
-  not much affected.
+- Every row calls each library function it times, on both sides, through a
+  function pointer the compiler cannot see through (`opaqueFn` in
+  `tools/bench.zig`), taken once before the row's loop. The port's functions
+  are therefore never inlined into a row, nor specialised on what the row
+  passes them: each runs as compiled on its own, as the original's library
+  does. Without it, the port's side could be folded into the timing loop; a
+  generator handed to `findRandomPoint` from a single call site was
+  devirtualized that way and the row read 0.39 where it is 0.68.
+- The original is reached through a thin C function that calls the library,
+  built separately, so each of its calls costs one call more than the
+  port's. The row "calibration: one call through an opaque pointer" times
+  that one call alone on each side, through a function that returns its
+  argument. On rows of a few nanoseconds (the navigation mesh lookups, the
+  geometry helpers, `isValidPolyRef`, `requestMoveTarget`) the extra call is
+  a large part of the difference; rows of a whole query, a crowd update or a
+  tile rebuild are not much affected.
 - The original is built with `-ffp-contract=off`, as in the tests, so
   neither side fuses a multiply and an add. Clang's default would fuse within
   an expression on this CPU.

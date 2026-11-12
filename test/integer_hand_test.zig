@@ -1591,10 +1591,13 @@ test "integer on one polygon: points inside, on an edge, at a vertex and outside
             &random_point,
         ).succeeded);
         try testing.expectEqual(ref, random_ref);
-        var over = false;
+        // Rounded to whole millimetres, a point on an edge can lie a
+        // fraction of one outside.
         var closest: [3]i32 = undefined;
-        _ = pair.query.closestPointOnPoly(ref, random_point, &closest, &over);
-        try testing.expect(over);
+        _ = pair.query.closestPointOnPoly(ref, random_point, &closest, null);
+        const dx = closest[0] - random_point[0];
+        const dz = closest[2] - random_point[2];
+        try testing.expect(dx * dx + dz * dz <= 1);
     }
 }
 
@@ -1999,7 +2002,8 @@ fn skepticDamage(blob: []align(4) u8, random: std.Random) usize {
         @ptrCast(@alignCast(blob[details_at..][0 .. @sizeOf(detour.nav_mesh.PolyDetail) *
             count(header.detail_mesh_count)]));
     const tris: []align(4) [4]u8 = @ptrCast(@alignCast(blob[tris_at..nodes_at]));
-    const nodes: []align(4) detour.nav_mesh.BvNode = @ptrCast(@alignCast(blob[nodes_at..connections_at]));
+    const nodes: []align(4) detour.nav_mesh.BvNode =
+        @ptrCast(@alignCast(blob[nodes_at..connections_at]));
     const connections: []align(4) integer.nav_mesh.OffMeshConnection =
         @ptrCast(@alignCast(blob[connections_at..end]));
     const coords: []align(4) i32 = @ptrCast(@alignCast(blob[verts_at..polys_at]));
@@ -2065,8 +2069,10 @@ fn skepticDamage(blob: []align(4) u8, random: std.Random) usize {
                 0 => connection.poly = @truncate(random.uintLessThan(usize, polys.len + 2)),
                 1 => connection.side = random.int(u8),
                 2 => connection.radius = skepticCoord(random),
-                else => connection.pos[random.uintLessThan(usize, 2)][random.uintLessThan(usize, 3)] =
-                    skepticCoord(random),
+                else => {
+                    const pos = &connection.pos[random.uintLessThan(usize, 2)];
+                    pos[random.uintLessThan(usize, 3)] = skepticCoord(random);
+                },
             }
         },
         9 => return random.uintLessThan(usize, end),
@@ -2083,7 +2089,10 @@ fn skepticDamage(blob: []align(4) u8, random: std.Random) usize {
             else => header.bounds_min[random.uintLessThan(usize, 3)] = skepticCoord(random),
         },
         else => {
-            const starts = [_]usize{ verts_at, polys_at, details_at, detail_verts_at, tris_at, nodes_at, connections_at, end };
+            const starts = [_]usize{
+                verts_at, polys_at, details_at,     detail_verts_at,
+                tris_at,  nodes_at, connections_at, end,
+            };
             const block = random.uintLessThan(usize, starts.len - 1);
             random.bytes(blob[starts[block]..starts[block + 1]]);
         },
@@ -2157,7 +2166,8 @@ test "skeptic: integer addTile and tileFromFloat take damaged tiles safely or re
         if (random.boolean()) {
             const other = random.uintLessThan(usize, float_tiles.items.len);
             if (other != index) {
-                const sound = try integer.convert.tileFromFloat(gpa, float_tiles.items[other], scale);
+                const sound =
+                    try integer.convert.tileFromFloat(gpa, float_tiles.items[other], scale);
                 if (nav.addTile(sound, .{ .free_data = true }, 0, null).failed) gpa.free(sound);
             }
         }

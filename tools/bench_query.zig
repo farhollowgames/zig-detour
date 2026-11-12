@@ -3,6 +3,7 @@
 const std = @import("std");
 const support = @import("support");
 const Bench = @import("bench.zig").Bench;
+const opaqueFn = @import("bench.zig").opaqueFn;
 const Row = @import("bench.zig").Row;
 
 const detour = support.detour;
@@ -118,9 +119,6 @@ const Context = struct {
     reference_any_angle: u32,
     reference_use_costs: u32,
     reference_all_crossings: i32,
-
-    /// How many floats the random point row's timed call draws.
-    draw_count: usize = 0,
 
     /// Points of the level's ground with a polygon in reach.
     centers: [query_count][3]f32,
@@ -335,11 +333,12 @@ const Context = struct {
     }
 
     fn baselineFindNearestPoly(context: *Context) u64 {
+        const findNearestPoly = opaqueFn(reference.ref_query_find_nearest_poly);
         var sum: u64 = 0;
         var nearest_ref: PolyRef = 0;
         var nearest_pt: [3]f32 = @splat(0);
         for (&context.centers) |*center| {
-            sum +%= reference.ref_query_find_nearest_poly(
+            sum +%= findNearestPoly(
                 context.reference_query,
                 center,
                 &half_extents,
@@ -353,11 +352,13 @@ const Context = struct {
     }
 
     fn portFindNearestPoly(context: *Context) u64 {
+        const findNearestPoly = opaqueFn(detour.NavMeshQuery.findNearestPoly);
         var sum: u64 = 0;
         var nearest_ref: PolyRef = 0;
         var nearest_pt: [3]f32 = @splat(0);
         for (context.centers) |center| {
-            sum +%= statusSum(context.query.findNearestPoly(
+            sum +%= statusSum(findNearestPoly(
+                &context.query,
                 center,
                 half_extents,
                 &context.filter,
@@ -371,10 +372,11 @@ const Context = struct {
     }
 
     fn baselineQueryPolygons(context: *Context) u64 {
+        const queryPolygons = opaqueFn(reference.ref_query_query_polygons);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (&context.centers) |*center| {
-            sum +%= reference.ref_query_query_polygons(
+            sum +%= queryPolygons(
                 context.reference_query,
                 center,
                 &half_extents,
@@ -389,10 +391,12 @@ const Context = struct {
     }
 
     fn portQueryPolygons(context: *Context) u64 {
+        const queryPolygons = opaqueFn(detour.NavMeshQuery.queryPolygons);
         var sum: u64 = 0;
         var count: usize = 0;
         for (context.centers) |center| {
-            sum +%= statusSum(context.query.queryPolygons(
+            sum +%= statusSum(queryPolygons(
+                &context.query,
                 center,
                 half_extents,
                 &context.filter,
@@ -405,10 +409,11 @@ const Context = struct {
     }
 
     fn baselineQueryPolygonsWith(context: *Context) u64 {
+        const queryPolygonsCb = opaqueFn(reference.ref_query_query_polygons_cb);
         var sum: u64 = 0;
         var collector: RefCollector = .{};
         for (&context.centers) |*center| {
-            sum +%= reference.ref_query_query_polygons_cb(
+            sum +%= queryPolygonsCb(
                 context.reference_query,
                 center,
                 &half_extents,
@@ -421,6 +426,7 @@ const Context = struct {
     }
 
     fn portQueryPolygonsWith(context: *Context) u64 {
+        const queryPolygonsWith = opaqueFn(detour.NavMeshQuery.queryPolygonsWith);
         var sum: u64 = 0;
         var collector: RefCollector = .{};
         const receiver: detour.PolyQuery = .{
@@ -428,7 +434,8 @@ const Context = struct {
             .vtable = &RefCollector.port_vtable,
         };
         for (context.centers) |center| {
-            sum +%= statusSum(context.query.queryPolygonsWith(
+            sum +%= statusSum(queryPolygonsWith(
+                &context.query,
                 center,
                 half_extents,
                 &context.filter,
@@ -439,11 +446,12 @@ const Context = struct {
     }
 
     fn baselineClosestPointOnPoly(context: *Context) u64 {
+        const closestPointOnPoly = opaqueFn(reference.ref_query_closest_point_on_poly);
         var sum: u64 = 0;
         var closest: [3]f32 = @splat(0);
         var over_poly = false;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_closest_point_on_poly(
+            sum +%= closestPointOnPoly(
                 context.reference_query,
                 context.refs[i],
                 &context.centers[i],
@@ -456,11 +464,13 @@ const Context = struct {
     }
 
     fn portClosestPointOnPoly(context: *Context) u64 {
+        const closestPointOnPoly = opaqueFn(detour.NavMeshQuery.closestPointOnPoly);
         var sum: u64 = 0;
         var closest: [3]f32 = @splat(0);
         var over_poly = false;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.closestPointOnPoly(
+            sum +%= statusSum(closestPointOnPoly(
+                &context.query,
                 context.refs[i],
                 context.centers[i],
                 &closest,
@@ -472,10 +482,13 @@ const Context = struct {
     }
 
     fn baselineClosestPointOnPolyBoundary(context: *Context) u64 {
+        const closestPointOnPolyBoundary = opaqueFn(
+            reference.ref_query_closest_point_on_poly_boundary,
+        );
         var sum: u64 = 0;
         var closest: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_closest_point_on_poly_boundary(
+            sum +%= closestPointOnPolyBoundary(
                 context.reference_query,
                 context.refs[i],
                 &context.centers[i],
@@ -487,10 +500,12 @@ const Context = struct {
     }
 
     fn portClosestPointOnPolyBoundary(context: *Context) u64 {
+        const closestPointOnPolyBoundary = opaqueFn(detour.NavMeshQuery.closestPointOnPolyBoundary);
         var sum: u64 = 0;
         var closest: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.closestPointOnPolyBoundary(
+            sum +%= statusSum(closestPointOnPolyBoundary(
+                &context.query,
                 context.refs[i],
                 context.centers[i],
                 &closest,
@@ -501,10 +516,11 @@ const Context = struct {
     }
 
     fn baselineGetPolyHeight(context: *Context) u64 {
+        const getPolyHeight = opaqueFn(reference.ref_query_get_poly_height);
         var sum: u64 = 0;
         var height: f32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_get_poly_height(
+            sum +%= getPolyHeight(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -516,10 +532,12 @@ const Context = struct {
     }
 
     fn portGetPolyHeight(context: *Context) u64 {
+        const getPolyHeight = opaqueFn(detour.NavMeshQuery.getPolyHeight);
         var sum: u64 = 0;
         var height: f32 = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.getPolyHeight(
+            sum +%= statusSum(getPolyHeight(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 &height,
@@ -530,9 +548,10 @@ const Context = struct {
     }
 
     fn baselineIsValidPolyRef(context: *Context) u64 {
+        const isValidPolyRef = opaqueFn(reference.ref_query_is_valid_poly_ref);
         var sum: u64 = 0;
         for (0..query_count) |i| {
-            sum +%= @intFromBool(reference.ref_query_is_valid_poly_ref(
+            sum +%= @intFromBool(isValidPolyRef(
                 context.reference_query,
                 context.refs[i],
                 context.reference_filter,
@@ -542,18 +561,20 @@ const Context = struct {
     }
 
     fn portIsValidPolyRef(context: *Context) u64 {
+        const isValidPolyRef = opaqueFn(detour.NavMeshQuery.isValidPolyRef);
         var sum: u64 = 0;
         for (0..query_count) |i| {
-            sum +%= @intFromBool(context.query.isValidPolyRef(context.refs[i], &context.filter));
+            sum +%= @intFromBool(isValidPolyRef(&context.query, context.refs[i], &context.filter));
         }
         return sum;
     }
 
     fn baselineFindPath(context: *Context) u64 {
+        const findPath = opaqueFn(reference.ref_query_find_path);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_path(
+            sum +%= findPath(
                 context.reference_query,
                 context.refs[i],
                 context.refs[i + 1],
@@ -570,10 +591,12 @@ const Context = struct {
     }
 
     fn portFindPath(context: *Context) u64 {
+        const findPath = opaqueFn(detour.NavMeshQuery.findPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findPath(
+            sum +%= statusSum(findPath(
+                &context.query,
                 context.refs[i],
                 context.refs[i + 1],
                 context.points[i],
@@ -591,11 +614,14 @@ const Context = struct {
     /// `sliced_iteration_count` iterations a call until it is no longer in
     /// progress, and finalized.
     inline fn baselineSlicedFindPathWith(context: *Context, options: u32) u64 {
+        const initSlicedFindPath = opaqueFn(reference.ref_query_init_sliced_find_path);
+        const updateSlicedFindPath = opaqueFn(reference.ref_query_update_sliced_find_path);
+        const finalizeSlicedFindPath = opaqueFn(reference.ref_query_finalize_sliced_find_path);
         var sum: u64 = 0;
         var count: i32 = 0;
         var done: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_init_sliced_find_path(
+            sum +%= initSlicedFindPath(
                 context.reference_query,
                 context.refs[i],
                 context.refs[i + 1],
@@ -605,7 +631,7 @@ const Context = struct {
                 options,
             );
             while (true) {
-                const status: detour.Status = @bitCast(reference.ref_query_update_sliced_find_path(
+                const status: detour.Status = @bitCast(updateSlicedFindPath(
                     context.reference_query,
                     sliced_iteration_count,
                     &done,
@@ -613,7 +639,7 @@ const Context = struct {
                 sum +%= statusSum(status) +% @as(u32, @bitCast(done));
                 if (!status.in_progress) break;
             }
-            sum +%= reference.ref_query_finalize_sliced_find_path(
+            sum +%= finalizeSlicedFindPath(
                 context.reference_query,
                 &context.polys,
                 &count,
@@ -625,11 +651,15 @@ const Context = struct {
     }
 
     inline fn portSlicedFindPathWith(context: *Context, options: detour.FindPathOptions) u64 {
+        const initSlicedFindPath = opaqueFn(detour.NavMeshQuery.initSlicedFindPath);
+        const updateSlicedFindPath = opaqueFn(detour.NavMeshQuery.updateSlicedFindPath);
+        const finalizeSlicedFindPath = opaqueFn(detour.NavMeshQuery.finalizeSlicedFindPath);
         var sum: u64 = 0;
         var count: usize = 0;
         var done: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.initSlicedFindPath(
+            sum +%= statusSum(initSlicedFindPath(
+                &context.query,
                 context.refs[i],
                 context.refs[i + 1],
                 context.points[i],
@@ -638,11 +668,11 @@ const Context = struct {
                 options,
             ));
             while (true) {
-                const status = context.query.updateSlicedFindPath(sliced_iteration_count, &done);
+                const status = updateSlicedFindPath(&context.query, sliced_iteration_count, &done);
                 sum +%= statusSum(status) +% @as(u32, @bitCast(done));
                 if (!status.in_progress) break;
             }
-            sum +%= statusSum(context.query.finalizeSlicedFindPath(&context.polys, &count));
+            sum +%= statusSum(finalizeSlicedFindPath(&context.query, &context.polys, &count));
             sum +%= listSum(&context.polys, count);
         }
         return sum;
@@ -677,11 +707,12 @@ const Context = struct {
     }
 
     inline fn baselineFindStraightPathWith(context: *Context, options: i32) u64 {
+        const findStraightPath = opaqueFn(reference.ref_query_find_straight_path);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
             const path = context.paths[context.path_starts[i]..context.path_starts[i + 1]];
-            sum +%= reference.ref_query_find_straight_path(
+            sum +%= findStraightPath(
                 context.reference_query,
                 &context.points[i],
                 &context.path_ends[i],
@@ -703,11 +734,13 @@ const Context = struct {
         context: *Context,
         options: detour.StraightPathOptions,
     ) u64 {
+        const findStraightPath = opaqueFn(detour.NavMeshQuery.findStraightPath);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
             const path = context.paths[context.path_starts[i]..context.path_starts[i + 1]];
-            sum +%= statusSum(context.query.findStraightPath(
+            sum +%= statusSum(findStraightPath(
+                &context.query,
                 context.points[i],
                 context.path_ends[i],
                 path,
@@ -739,11 +772,12 @@ const Context = struct {
     }
 
     fn baselineMoveAlongSurface(context: *Context) u64 {
+        const moveAlongSurface = opaqueFn(reference.ref_query_move_along_surface);
         var sum: u64 = 0;
         var result: [3]f32 = @splat(0);
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_move_along_surface(
+            sum +%= moveAlongSurface(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -760,11 +794,13 @@ const Context = struct {
     }
 
     fn portMoveAlongSurface(context: *Context) u64 {
+        const moveAlongSurface = opaqueFn(detour.NavMeshQuery.moveAlongSurface);
         var sum: u64 = 0;
         var result: [3]f32 = @splat(0);
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.moveAlongSurface(
+            sum +%= statusSum(moveAlongSurface(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 context.steps[i],
@@ -783,13 +819,14 @@ const Context = struct {
     /// interface hands back zero where no edge was hit, the port leaves the
     /// field as it was.
     inline fn baselineRaycastWith(context: *Context, options: u32) u64 {
+        const raycastHit = opaqueFn(reference.ref_query_raycast_hit);
         var sum: u64 = 0;
         var t: f32 = 0;
         var normal: [3]f32 = @splat(0);
         var count: i32 = 0;
         var cost: f32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_raycast_hit(
+            sum +%= raycastHit(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -812,6 +849,7 @@ const Context = struct {
     }
 
     inline fn portRaycastWith(context: *Context, options: detour.RaycastOptions) u64 {
+        const raycast = opaqueFn(detour.NavMeshQuery.raycast);
         var sum: u64 = 0;
         var hit: detour.RaycastHit = .{
             .t = 0,
@@ -822,7 +860,8 @@ const Context = struct {
             .path_cost = 0,
         };
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.raycast(
+            sum +%= statusSum(raycast(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 context.points[i + 1],
@@ -854,12 +893,13 @@ const Context = struct {
     }
 
     fn baselineRaycastPath(context: *Context) u64 {
+        const raycast = opaqueFn(reference.ref_query_raycast);
         var sum: u64 = 0;
         var t: f32 = 0;
         var normal: [3]f32 = @splat(0);
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_raycast(
+            sum +%= raycast(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -878,12 +918,14 @@ const Context = struct {
     }
 
     fn portRaycastPath(context: *Context) u64 {
+        const raycastPath = opaqueFn(detour.NavMeshQuery.raycastPath);
         var sum: u64 = 0;
         var t: f32 = 0;
         var normal: [3]f32 = @splat(0);
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.raycastPath(
+            sum +%= statusSum(raycastPath(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 context.points[i + 1],
@@ -900,10 +942,11 @@ const Context = struct {
     }
 
     fn baselineFindPolysAroundCircle(context: *Context) u64 {
+        const findPolysAroundCircle = opaqueFn(reference.ref_query_find_polys_around_circle);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_polys_around_circle(
+            sum +%= findPolysAroundCircle(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -922,10 +965,12 @@ const Context = struct {
     }
 
     fn portFindPolysAroundCircle(context: *Context) u64 {
+        const findPolysAroundCircle = opaqueFn(detour.NavMeshQuery.findPolysAroundCircle);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findPolysAroundCircle(
+            sum +%= statusSum(findPolysAroundCircle(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 circle_radius,
@@ -943,10 +988,11 @@ const Context = struct {
     }
 
     fn baselineFindPolysAroundShape(context: *Context) u64 {
+        const findPolysAroundShape = opaqueFn(reference.ref_query_find_polys_around_shape);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_polys_around_shape(
+            sum +%= findPolysAroundShape(
                 context.reference_query,
                 context.refs[i],
                 @ptrCast(&context.shapes[i]),
@@ -965,10 +1011,12 @@ const Context = struct {
     }
 
     fn portFindPolysAroundShape(context: *Context) u64 {
+        const findPolysAroundShape = opaqueFn(detour.NavMeshQuery.findPolysAroundShape);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findPolysAroundShape(
+            sum +%= statusSum(findPolysAroundShape(
+                &context.query,
                 context.refs[i],
                 &context.shapes[i],
                 &context.filter,
@@ -985,10 +1033,11 @@ const Context = struct {
     }
 
     fn baselineFindLocalNeighbourhood(context: *Context) u64 {
+        const findLocalNeighbourhood = opaqueFn(reference.ref_query_find_local_neighbourhood);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_local_neighbourhood(
+            sum +%= findLocalNeighbourhood(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -1005,10 +1054,12 @@ const Context = struct {
     }
 
     fn portFindLocalNeighbourhood(context: *Context) u64 {
+        const findLocalNeighbourhood = opaqueFn(detour.NavMeshQuery.findLocalNeighbourhood);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findLocalNeighbourhood(
+            sum +%= statusSum(findLocalNeighbourhood(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 neighbourhood_radius,
@@ -1023,10 +1074,11 @@ const Context = struct {
     }
 
     fn baselineGetPolyWallSegments(context: *Context) u64 {
+        const getPolyWallSegments = opaqueFn(reference.ref_query_get_poly_wall_segments);
         var sum: u64 = 0;
         var count: i32 = 0;
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_get_poly_wall_segments(
+            sum +%= getPolyWallSegments(
                 context.reference_query,
                 context.refs[i],
                 context.reference_filter,
@@ -1042,10 +1094,12 @@ const Context = struct {
     }
 
     fn portGetPolyWallSegments(context: *Context) u64 {
+        const getPolyWallSegments = opaqueFn(detour.NavMeshQuery.getPolyWallSegments);
         var sum: u64 = 0;
         var count: usize = 0;
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.getPolyWallSegments(
+            sum +%= statusSum(getPolyWallSegments(
+                &context.query,
                 context.refs[i],
                 &context.filter,
                 &context.segments,
@@ -1059,12 +1113,13 @@ const Context = struct {
     }
 
     fn baselineFindDistanceToWall(context: *Context) u64 {
+        const findDistanceToWall = opaqueFn(reference.ref_query_find_distance_to_wall);
         var sum: u64 = 0;
         var distance: f32 = 0;
         var point: [3]f32 = @splat(0);
         var normal: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_distance_to_wall(
+            sum +%= findDistanceToWall(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -1080,12 +1135,14 @@ const Context = struct {
     }
 
     fn portFindDistanceToWall(context: *Context) u64 {
+        const findDistanceToWall = opaqueFn(detour.NavMeshQuery.findDistanceToWall);
         var sum: u64 = 0;
         var distance: f32 = 0;
         var point: [3]f32 = @splat(0);
         var normal: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findDistanceToWall(
+            sum +%= statusSum(findDistanceToWall(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 wall_radius,
@@ -1100,12 +1157,13 @@ const Context = struct {
     }
 
     fn baselineFindRandomPoint(context: *Context) u64 {
+        const findRandomPoint = opaqueFn(reference.ref_query_find_random_point);
         support.seedReferenceRandom(random_seed);
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]f32 = @splat(0);
         for (0..query_count) |_| {
-            sum +%= reference.ref_query_find_random_point(
+            sum +%= findRandomPoint(
                 context.reference_query,
                 context.reference_filter,
                 support.referenceRandom,
@@ -1118,59 +1176,35 @@ const Context = struct {
     }
 
     fn portFindRandomPoint(context: *Context) u64 {
+        const findRandomPoint = opaqueFn(detour.NavMeshQuery.findRandomPoint);
         var prng: std.Random.DefaultPrng = .init(random_seed);
         const random = prng.random();
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]f32 = @splat(0);
         for (0..query_count) |_| {
-            sum +%= statusSum(context.query.findRandomPoint(&context.filter, random, &ref, &point));
+            sum +%= statusSum(findRandomPoint(
+                &context.query,
+                &context.filter,
+                random,
+                &ref,
+                &point,
+            ));
             sum +%= ref +% pointSum(point);
         }
-        return sum;
-    }
-
-    /// The port's random point query with its generator behind an opaque
-    /// call, as the original's `frand` callback always is: the compiler
-    /// cannot inline the draws.
-    fn portFindRandomPointOpaque(context: *Context) u64 {
-        var prng: std.Random.DefaultPrng = .init(random_seed);
-        var random = prng.random();
-        std.mem.doNotOptimizeAway(&random);
-        var sum: u64 = 0;
-        var ref: PolyRef = 0;
-        var point: [3]f32 = @splat(0);
-        for (0..query_count) |_| {
-            sum +%= statusSum(context.query.findRandomPoint(&context.filter, random, &ref, &point));
-            sum +%= ref +% pointSum(point);
-        }
-        return sum;
-    }
-
-    /// The original's draws alone: as many calls of its callback as one
-    /// timed call of the random point row makes.
-    fn baselineDrawsOnly(context: *Context) u64 {
-        support.seedReferenceRandom(random_seed);
-        var sum: u64 = 0;
-        for (0..context.draw_count) |_| sum +%= @as(u32, @bitCast(support.referenceRandom()));
-        return sum;
-    }
-
-    fn portDrawsOnly(context: *Context) u64 {
-        var prng: std.Random.DefaultPrng = .init(random_seed);
-        const random = prng.random();
-        var sum: u64 = 0;
-        for (0..context.draw_count) |_| sum +%= @as(u32, @bitCast(random.float(f32)));
         return sum;
     }
 
     fn baselineFindRandomPointAroundCircle(context: *Context) u64 {
+        const findRandomPointAroundCircle = opaqueFn(
+            reference.ref_query_find_random_point_around_circle,
+        );
         support.seedReferenceRandom(random_seed);
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= reference.ref_query_find_random_point_around_circle(
+            sum +%= findRandomPointAroundCircle(
                 context.reference_query,
                 context.refs[i],
                 &context.points[i],
@@ -1186,13 +1220,17 @@ const Context = struct {
     }
 
     fn portFindRandomPointAroundCircle(context: *Context) u64 {
+        const findRandomPointAroundCircle = opaqueFn(
+            detour.NavMeshQuery.findRandomPointAroundCircle,
+        );
         var prng: std.Random.DefaultPrng = .init(random_seed);
         const random = prng.random();
         var sum: u64 = 0;
         var ref: PolyRef = 0;
         var point: [3]f32 = @splat(0);
         for (0..query_count) |i| {
-            sum +%= statusSum(context.query.findRandomPointAroundCircle(
+            sum +%= statusSum(findRandomPointAroundCircle(
+                &context.query,
                 context.refs[i],
                 context.points[i],
                 circle_radius,
@@ -1208,21 +1246,6 @@ const Context = struct {
 };
 
 /// A row of `query_count` queries.
-/// A generator that counts the 4-byte fills it hands out: one a float.
-const CountingRandom = struct {
-    inner: std.Random,
-    count: usize = 0,
-
-    fn fill(self: *CountingRandom, buf: []u8) void {
-        self.count += 1;
-        self.inner.bytes(buf);
-    }
-
-    fn random(self: *CountingRandom) std.Random {
-        return std.Random.init(self, fill);
-    }
-};
-
 fn queryRow(name: []const u8) Row {
     return .{ .name = name, .per = "query", .count = query_count };
 }
@@ -1389,30 +1412,6 @@ pub fn run(bench: *Bench) !void {
         &context,
         Context.baselineFindRandomPoint,
         Context.portFindRandomPoint,
-    );
-    {
-        // How many floats one timed call of the row above draws.
-        var counter: std.Random.DefaultPrng = .init(random_seed);
-        var counted: CountingRandom = .{ .inner = counter.random() };
-        var ref: PolyRef = 0;
-        var point: [3]f32 = @splat(0);
-        for (0..query_count) |_| {
-            _ = context.query.findRandomPoint(&context.filter, counted.random(), &ref, &point);
-        }
-        context.draw_count = counted.count;
-        std.debug.print("findRandomPoint: {d} draws in {d} queries\n", .{ counted.count, query_count });
-    }
-    try bench.compare(
-        queryRow("NavMeshQuery.findRandomPoint, the port's draws behind a call"),
-        &context,
-        Context.baselineFindRandomPoint,
-        Context.portFindRandomPointOpaque,
-    );
-    try bench.compare(
-        .{ .name = "the draws of findRandomPoint alone", .per = "query", .count = query_count },
-        &context,
-        Context.baselineDrawsOnly,
-        Context.portDrawsOnly,
     );
     try bench.compare(
         queryRow("NavMeshQuery.findRandomPointAroundCircle"),

@@ -2114,13 +2114,15 @@ test "skeptic: removeTile and addTile in one entry until its salt wraps" {
     var revived: usize = 0;
     for (0..cycles) |cycle| {
         errdefer std.debug.print("  cycle {d}\n", .{cycle});
-        try testing.expect((try expectSameRemoval(pair.reference_nav, &pair.nav, ref, null)).succeeded);
+        const removed = try expectSameRemoval(pair.reference_nav, &pair.nav, ref, null);
+        try testing.expect(removed.succeeded);
         // The freed entry heads the free list, so the tile goes back there.
         var next: TileRef = 0;
         try testing.expect((try pair.add(blob, .{ .free_data = true }, 0, &next)).succeeded);
         try testing.expect(next != ref);
         ref = next;
-        const expected_valid = reference.ref_nav_mesh_is_valid_poly_ref(pair.reference_nav, first_poly);
+        const expected_valid =
+            reference.ref_nav_mesh_is_valid_poly_ref(pair.reference_nav, first_poly);
         try testing.expectEqual(expected_valid, pair.nav.isValidPolyRef(first_poly));
         if (expected_valid) revived += 1;
     }
