@@ -603,9 +603,13 @@ The performance pass and the skeptic are done (branches `review/perf-and-skeptic
   raycast's cost on grazing hits, moveAlongSurface's visited list at a shared-edge
   tie, findDistanceToWall's normal between two near walls, findStraightPath's end at
   an edge-vertex tie (seed 3), and findPath on seed 13 (integer corridor 2.7% cheaper).
-- to do: a quiet benchmark (three runs pinned with `taskset -c 6`, load under 3), then
-  the tables of `doc/BENCHMARKS.md` and the ratios in `README.md`, and the "Where the
-  port is slower" text (`closestHeightOnTriangle` is no longer inlined into its row).
+- to do: a quiet benchmark (three runs pinned with `taskset -c 6`, load under 3; the
+  machine stayed above that for over an hour on 11 November), then the tables of
+  `doc/BENCHMARKS.md` (still from before the opaque calls; "Known biases" quotes
+  findRandomPoint at 0.68 from a one-round run), the README's headline table in percent
+  ("N% faster" or "N% slower" than the original, ratios only in `doc/BENCHMARKS.md`),
+  and the "Where the port is slower" text (`closestHeightOnTriangle` is no longer
+  inlined into its row).
 - release, once every test passes on seeds 0 to 31 in Debug and ReleaseSafe: merge
   `review/fixes` into `main`, mark this file's entries reviewed, put `#v0.1.0` in the
   README's install line, tag `v0.1.0` (annotated) and push `main` and the tag.
