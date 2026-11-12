@@ -3,13 +3,17 @@
 Tracks recastnavigation 1.6.0 (Detour, DetourCrowd, DetourTileCache) · Zig 0.17 ·
 [status](STATUS.md)
 
+## What it is
+
 A Zig port of Detour, DetourCrowd and DetourTileCache, the navigation mesh
 runtime of [recastnavigation](#licence-and-references). It holds navigation
 meshes in tiles and answers questions about them, moves crowds of agents
 along paths, and rebuilds tiles around obstacles at run time. It is pure Zig,
 with no dependencies beyond the standard library.
 
-This port is not affiliated with or reviewed by the original authors. Its code was written with AI assistance for Farhollow Games, and is only machine verified. See [the tests](doc/TESTING.md) and [parity with the original](doc/parity.md).
+This port is not affiliated with or reviewed by the original authors. Its
+code was written with AI assistance for Farhollow Games, and is only machine
+verified. See [the tests](doc/TESTING.md) and [parity with the original](doc/parity.md).
 
 ## Features
 
@@ -34,7 +38,9 @@ This port is not affiliated with or reviewed by the original authors. Its code w
 zig fetch --save git+https://github.com/farhollowgames/zig-detour#v0.1.0
 ```
 
-Then, in `build.zig`:
+`v0.1.0` is the latest release.
+
+In `build.zig`:
 
 ```zig
 const detour = b.dependency("detour", .{ .target = target, .optimize = optimize });
@@ -114,13 +120,15 @@ integer variant's use, units and bounds.
 
 ## Differences from the original
 
-[`doc/parity.md`](doc/parity.md) gives the reasons.
+The reasons are in [`doc/parity.md`](doc/parity.md).
 
-*Additions*
+*Additions*:
+
 - `detour.integer`, the integer navigation mesh and queries, with
   `tileFromFloat` to convert a float tile.
 
-*Changes to expect*
+*Changes to expect*:
+
 - Every function that allocates takes a `std.mem.Allocator`, in place of the
   `dtAlloc` hooks.
 - A value is declared where the caller wants it (`.empty`), readied with
@@ -136,37 +144,40 @@ integer variant's use, units and bounds.
 
 ## Not included
 
-The allocator and assert hooks, and the debug drawing and demo code;
-[`STATUS.md`](STATUS.md#left-out) lists each left-out item and what takes its
-place.
+The parts of the original that are left out, each with what takes its place,
+are listed in [`STATUS.md`](STATUS.md#left-out).
 
 ## Testing and benchmarks
 
-368 tests, each run with every build switch off and with every one on. They
-compare every returned value and every byte written by the original and the
-port on the same inputs. The integer variant is held to the float port within
-the tolerances its design states. RecastDemo's `undulating.obj` lies 5 km from
-the origin, where a float's own rounding is half a millimetre, so it is
-compared with the float port only after a move to near the origin; at its own
-place the integer variant is checked against itself. `-Dfuzz-seed=<n>` moves
-the seeded tests to other inputs. The port against the original, on an AMD
-Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
-`-O3`:
+`zig build test` runs 368 tests, each with every build switch off and with
+every one on. They compare every returned value and every byte written by the
+original and the port on the same inputs. The integer variant is held to the
+float port within the tolerances its design states. RecastDemo's
+`undulating.obj` lies 5 km from the origin, where a float's own rounding is
+half a millimetre, so it is compared with the float port only after a move to
+near the origin; at its own place the integer variant is checked against
+itself. `-Dfuzz-seed=<n>` moves the seeded tests to other inputs.
 
-| feature | the port |
-| --- | --- |
+Port time against original time, one core:
+
+| feature | port vs original |
+| --- | ---: |
 | `NavMeshQuery.findPath` | 9% faster |
 | `NavMeshQuery.raycast` | 28% faster |
 | `Crowd.update`, 128 agents | 3% faster |
 | `NavMesh.addTile + removeTile` | 10% slower |
 | `TileCache.addObstacle + removeObstacle + update` | 8% slower |
 
-Each is the best median of three runs. The integer queries are 7% to 68%
-slower than the float port's (`findPath` 9%, `raycast` 68%).
+The integer queries are 7% to 68% slower than the float port's (`findPath`
+9%, `raycast` 68%).
 
-[`doc/TESTING.md`](doc/TESTING.md) describes the tests;
-[`doc/BENCHMARKS.md`](doc/BENCHMARKS.md) has every row, the flags, the
-biases and the command.
+AMD Ryzen 9 9950X3D, one core, Zig 0.17.0 ReleaseFast against Clang 22.1.8
+`-O3`; each row is the best median of three runs.
+
+- [`doc/TESTING.md`](doc/TESTING.md): how the tests compare the port with
+  the original, and what this repository's tests cover.
+- [`doc/BENCHMARKS.md`](doc/BENCHMARKS.md): ratios and full tables: every
+  row, the flags on both sides, the biases and the command.
 
 ## Licence and references
 

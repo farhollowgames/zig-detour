@@ -1,48 +1,95 @@
 # Testing
 
-`zig build test` runs every test. The tests fetch the original at the pinned
-tag, build it from source (test-only code, never part of the package), and
-run the original and the port on the same inputs.
+The sections up to "In this repository" are the same in every Farhollow
+Games port of a C or C++ library to Zig. The last section says how this
+repository applies them.
 
-## What the oracle tests compare
+## Oracle tests
 
-After every call, the two sides must agree on every returned value and every
-byte written, not on a summary such as a hash of one field. Where a call
-writes into a buffer or a structure, the whole buffer or structure is
-compared.
+The original is pinned to one upstream commit and kept in `reference/` (or
+fetched as a lazy dependency), byte for byte as upstream has it. It is built
+only for the tests and the benchmark, and is never part of the package.
+
+An oracle test runs the original and the port on the same inputs and
+compares the results. Where the original is exact, the test compares every
+output byte and every returned value, not a summary such as a hash or one
+field of the result. The inputs are:
+
+- the original's own test data and demo assets, where it has them;
+- hand-made edge cases: empty input, one element, the largest size, and
+  degenerate cases;
+- seeded random inputs (see Fuzzing).
+
+`STATUS.md` lists every public function, option and mode of the original,
+and names the tests that check each one. Code coverage is not the measure:
+a feature counts as checked when a test compares it, not when a line is
+reached.
 
 ## What "the same output" means
 
-Bytes are compared as bytes. Floats are compared by their bits, so the sign
-of zero counts, and a NaN must be the same NaN. Where the port deliberately
-differs from the original, a written design gives the units, the scales, the
-overflow bounds and the tolerances, and the tests hold the port to the exact
-port within those tolerances.
+- Bytes and integers are equal.
+- Floats are compared by their bit patterns, so `-0.0` differs from `0.0`,
+  and a NaN matches only a NaN with the same bits.
+- Where the original's output depends on how it is compiled (fused
+  multiply-add, fast-math, signed overflow), the reference is built with
+  flags that fix one result, and the port computes that result. The last
+  section names the flags.
+- Where a port deliberately computes differently from the original, a
+  written design gives the units, scales, overflow bounds and tolerances.
+  The port is then checked against an exact port within those tolerances,
+  and against itself exactly.
 
-## Inputs and fuzzing
+## Fuzzing
 
-The inputs are the original's own test data and demo assets, hand-made edge
-cases (empty, one element, the largest sizes, degenerate geometry), and
-seeded random inputs. Each random test runs at least 1,000 cases, and prints
-its seed and case number when one fails.
+Each fuzz test draws its inputs from a seeded generator and runs at least
+1,000 cases. The seeds are recorded in the tests, so every run checks the
+same inputs. A failure prints its seed, and the configuration where there is
+one, so that it can be repeated. Where a repository has the option,
+`zig build test -Dfuzz-seed=N` changes every fuzz test's seed, to explore
+other inputs.
 
 ## Malformed input
 
-Decoders and parsers must give the original's result, an error, or a
-refusal on truncated, corrupted and random bytes. Where the original would
-read or write outside its input, the port refuses it.
+Decoders and parsers are given truncated, corrupted and random bytes, and
+must give the original's result: the same output, the same error, or the
+same rejection. Where the port asserts a condition that the original
+reports as an error code, or that the original does not check, `STATUS.md`
+says so. Where a repository has contract tests, a program breaks one
+contract per run, and the test expects the abort and its message in the safe
+build modes.
 
 ## Determinism
 
-The same inputs give the same output on every run, and on 1, 2 and many
-threads where the library can be used from threads.
+The same inputs give the same output on every run. Where the library splits
+work over threads, the tests compare the output on 1, 2 and more threads
+with the output of one.
 
 ## Build modes
 
-The tests build in ReleaseSafe by default, which keeps every assert and
-overflow check; `-Dtest-optimize=Debug` and the other modes work too.
+`zig build test` runs the tests in ReleaseSafe unless
+`-Dtest-optimize=<mode>` says otherwise. ReleaseSafe keeps every assert and
+integer overflow check on and runs the slow cases in reasonable time. The
+last section says which modes have been run.
 
-## This repository
+## Review
+
+After a port passes its oracle tests, a separate AI agent profiles it
+against the original and tunes the hot paths; each change is kept only if
+the oracle tests still pass and the benchmark shows a gain. Another AI agent
+then tries to break the claims: features left untested, comparisons that
+check too little, fuzzing too narrow, benchmarks that favour the port,
+undefined behaviour, integer overflow, and references that can outlive what
+they point to. Each confirmed finding is fixed with a test that failed
+before the fix. No person has yet reviewed the code or the tests.
+
+## In this repository
+
+The tests fetch the original at the pinned tag as a lazy dependency and
+build it from source; it is test-only code, never part of the package. After
+every call, the two sides must agree on every returned value and every byte
+written; where a call writes into a buffer or a structure, the whole buffer
+or structure is compared. Where the original would read or write outside
+its input, the port refuses it.
 
 The inputs are RecastDemo's three level meshes (`dungeon.obj`,
 `nav_test.obj`, `undulating.obj`), built by Recast into single tiles and into
