@@ -13,6 +13,7 @@ pub const nav_mesh = @import("integer/nav_mesh.zig");
 pub const node = @import("integer/node.zig");
 pub const nav_mesh_query = @import("integer/nav_mesh_query.zig");
 pub const convert = @import("integer/convert.zig");
+pub const path_corridor = @import("integer/path_corridor.zig");
 
 pub const Fraction = common.Fraction;
 
@@ -31,6 +32,7 @@ pub const PolyQuery = nav_mesh_query.PolyQuery;
 pub const Node = node.Node;
 pub const NodePool = node.NodePool;
 pub const NodeQueue = node.NodeQueue;
+pub const PathCorridor = path_corridor.PathCorridor;
 
 pub const tileFromFloat = convert.tileFromFloat;
 
@@ -40,6 +42,8 @@ test {
     std.testing.refAllDecls(node);
     std.testing.refAllDecls(nav_mesh_query);
     std.testing.refAllDecls(convert);
+    std.testing.refAllDecls(path_corridor);
+    std.testing.refAllDecls(PathCorridor);
     std.testing.refAllDecls(Fraction);
     std.testing.refAllDecls(NavMesh);
     std.testing.refAllDecls(MeshTile);

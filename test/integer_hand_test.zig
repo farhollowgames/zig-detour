@@ -1795,6 +1795,7 @@ const integer_sources = [_]struct { name: []const u8, text: [:0]const u8 }{
     .{ .name = "integer/nav_mesh.zig", .text = @embedFile("integer_source_nav_mesh") },
     .{ .name = "integer/node.zig", .text = @embedFile("integer_source_node") },
     .{ .name = "integer/nav_mesh_query.zig", .text = @embedFile("integer_source_nav_mesh_query") },
+    .{ .name = "integer/path_corridor.zig", .text = @embedFile("integer_source_path_corridor") },
 };
 
 /// The names the variant takes from the float port's mesh module: types
@@ -1838,6 +1839,15 @@ fn holdsNoFloat(comptime T: type) bool {
 }
 
 comptime {
+    // The corridor's merges are the float port's own functions: they move
+    // polygon references and nothing else.
+    for (.{
+        integer.path_corridor.mergeCorridorStartMoved,
+        integer.path_corridor.mergeCorridorEndMoved,
+        integer.path_corridor.mergeCorridorStartShortcut,
+    }) |merge| {
+        if (!holdsNoFloat(@TypeOf(merge))) @compileError("a corridor merge holds a float");
+    }
     for (shared_names) |name| {
         const value = @field(detour.nav_mesh, name);
         const T = if (@TypeOf(value) == type) value else @TypeOf(value);

@@ -3461,3 +3461,374 @@ test "skeptic: integer raycast, moveAlongSurface on unstable cases give one of t
     try testing.expectEqual(@as(usize, 0), unmatched_rays);
     try testing.expectEqual(@as(usize, 0), unmatched_moves);
 }
+
+// ---------------------------------------------------------------------------
+// Path corridor
+// ---------------------------------------------------------------------------
+
+/// The most polygons the compared corridors hold.
+const corridor_polys_max = 32;
+
+/// The corridor steps the comparison runs, one a case.
+const CorridorStep = enum(u3) {
+    corners,
+    move_position,
+    move_target,
+    visibility,
+    topology,
+    trim,
+};
+
+const corridor_step_count = @typeInfo(CorridorStep).@"enum".field_names.len;
+
+/// What one corridor step gave: whether it ran, the corridor after it, and
+/// its corners for `corners`.
+fn CorridorAnswer(comptime T: type) type {
+    return struct {
+        ran: bool = false,
+        path: [corridor_polys_max]PolyRef = undefined,
+        count: usize = 0,
+        pos: [3]T = undefined,
+        target: [3]T = undefined,
+        corners: [4][3]T = undefined,
+        corner_flags: [4]detour.nav_mesh.StraightPathFlags = undefined,
+        corner_polys: [4]PolyRef = undefined,
+        corner_count: usize = 0,
+
+        fn sameDiscrete(a: *const @This(), b: anytype) bool {
+            if (a.ran != b.ran or a.corner_count != b.corner_count) return false;
+            if (!std.mem.eql(PolyRef, a.path[0..a.count], b.path[0..b.count])) return false;
+            const n = a.corner_count;
+            if (!std.mem.eql(PolyRef, a.corner_polys[0..n], b.corner_polys[0..n])) return false;
+            for (a.corner_flags[0..n], b.corner_flags[0..n]) |x, y| {
+                if (@as(u8, @bitCast(x)) != @as(u8, @bitCast(y))) return false;
+            }
+            return true;
+        }
+    };
+}
+
+/// One case of the comparison: a corridor both sides found alike from
+/// `start` to `end`, the step, and the point it moves to or aims at.
+const CorridorCase = struct {
+    step: CorridorStep,
+    start: Start,
+    end: Start,
+    path: []const PolyRef,
+    /// Where `move_position` and `move_target` move to, and what
+    /// `visibility` aims at.
+    point: [3]i32,
+};
+
+/// The inputs of a case under a nudge: the moved point for the moves and
+/// the shortcut's aim, else the corridor's position.
+fn nudged(case: CorridorCase, by: [3]i32) struct { pos: [3]i32, point: [3]i32 } {
+    return switch (case.step) {
+        .move_position, .move_target, .visibility => .{
+            .pos = case.start.pos,
+            .point = moved(case.point, by),
+        },
+        else => .{ .pos = moved(case.start.pos, by), .point = case.point },
+    };
+}
+
+/// How far a shortcut ray reaches: thirty radii of RecastDemo's agent.
+const corridor_shortcut_range_mm = 18_000;
+
+fn floatCorridorStep(
+    pair: *Pair,
+    corridor: *detour.PathCorridor,
+    case: CorridorCase,
+    by: [3]i32,
+    trim_filter: *const detour.QueryFilter,
+    answer: *CorridorAnswer(f32),
+) void {
+    const at = nudged(case, by);
+    const filter: detour.QueryFilter = .{};
+    corridor.reset(case.start.ref, metres(at.pos));
+    corridor.setCorridor(metres(case.end.pos), case.path);
+    answer.* = .{};
+    const query = &pair.float_query;
+    switch (case.step) {
+        .corners => {
+            const n = corridor.findCorners(
+                &answer.corners,
+                &answer.corner_flags,
+                &answer.corner_polys,
+                query,
+                &filter,
+            );
+            answer.corner_count = @intCast(n);
+            answer.ran = true;
+        },
+        .move_position => answer.ran = corridor.movePosition(metres(at.point), query, &filter),
+        .move_target => answer.ran = corridor.moveTargetPosition(metres(at.point), query, &filter),
+        .visibility => {
+            corridor.optimizePathVisibility(
+                metres(at.point),
+                metresOf(corridor_shortcut_range_mm),
+                query,
+                &filter,
+            );
+            answer.ran = true;
+        },
+        .topology => answer.ran = corridor.optimizePathTopology(query, &filter),
+        .trim => answer.ran = corridor.trimInvalidPath(
+            case.start.ref,
+            metres(at.pos),
+            query,
+            trim_filter,
+        ),
+    }
+    const path = corridor.getPath();
+    @memcpy(answer.path[0..path.len], path);
+    answer.count = path.len;
+    answer.pos = corridor.getPos();
+    answer.target = corridor.getTarget();
+}
+
+fn integerCorridorStep(
+    pair: *Pair,
+    case: CorridorCase,
+    trim_filter: *const integer.QueryFilter,
+    answer: *CorridorAnswer(i32),
+) void {
+    answer.* = .{};
+    const filter: integer.QueryFilter = .{};
+    var corridor: integer.PathCorridor = .init(&answer.path);
+    corridor.reset(case.start.ref, case.start.pos);
+    corridor.setCorridor(case.end.pos, case.path);
+    const query = &pair.query;
+    switch (case.step) {
+        .corners => {
+            answer.corner_count = corridor.findCorners(
+                &answer.corners,
+                &answer.corner_flags,
+                &answer.corner_polys,
+                query,
+            );
+            answer.ran = true;
+        },
+        .move_position => answer.ran = corridor.movePosition(case.point, query, &filter),
+        .move_target => answer.ran = corridor.moveTargetPosition(case.point, query, &filter),
+        .visibility => {
+            _ = corridor.optimizePathVisibility(
+                case.point,
+                corridor_shortcut_range_mm,
+                query,
+                &filter,
+            );
+            answer.ran = true;
+        },
+        .topology => answer.ran = corridor.optimizePathTopology(query, &filter),
+        .trim => {
+            corridor.trimInvalidPath(case.start.ref, case.start.pos, query, trim_filter);
+            answer.ran = true;
+        },
+    }
+    answer.count = corridor.path_count;
+    answer.pos = corridor.pos;
+    answer.target = corridor.target;
+}
+
+/// A case for `step` over the corridor `path` both sides found from
+/// `start` to `end`, its point drawn from `random`; null when the step has
+/// nothing to aim at.
+fn corridorCase(
+    pair: *Pair,
+    step: CorridorStep,
+    start: Start,
+    end: Start,
+    path: []const PolyRef,
+    random: std.Random,
+) ?CorridorCase {
+    var point = end.pos;
+    switch (step) {
+        .move_position, .move_target => {
+            const from = if (step == .move_position) start.pos else end.pos;
+            point = .{
+                from[0] + random.intRangeAtMost(i32, -2000, 2000),
+                from[1],
+                from[2] + random.intRangeAtMost(i32, -2000, 2000),
+            };
+        },
+        .visibility => {
+            // The second corner of the integer straight path, as the crowd
+            // aims its shortcut.
+            var corners: [4][3]i32 = undefined;
+            var n: usize = 0;
+            _ = pair.query.findStraightPath(start.pos, end.pos, path, &corners, null, null, &n, .{});
+            if (n == 0) return null;
+            point = corners[@min(1, n - 1)];
+        },
+        else => {},
+    }
+    return .{ .step = step, .start = start, .end = end, .path = path, .point = point };
+}
+
+/// Whether two answers to `findCorners` differ only in which polygon names
+/// a corner at a vertex several portals share, as `findStraightPath` may
+/// name either polygon that holds it.
+fn sharedVertexCorners(
+    pair: *Pair,
+    expected: *const CorridorAnswer(f32),
+    actual: *const CorridorAnswer(i32),
+) bool {
+    if (expected.ran != actual.ran or expected.corner_count != actual.corner_count) return false;
+    if (!std.mem.eql(PolyRef, expected.path[0..expected.count], actual.path[0..actual.count])) {
+        return false;
+    }
+    var differ = false;
+    const n = expected.corner_count;
+    for (0..n) |i| {
+        const want_at = expected.corners[i];
+        const got_at = actual.corners[i];
+        if (axisError(want_at, got_at, 0) > tolerance) return false;
+        if (axisError(want_at, got_at, 2) > tolerance) return false;
+        const want = expected.corner_polys[i];
+        const got = actual.corner_polys[i];
+        if (want == got) continue;
+        if (want == 0 or got == 0) return false;
+        if (!hasVertexAt(pair, want, actual.corners[i])) return false;
+        if (!hasVertexAt(pair, got, actual.corners[i])) return false;
+        differ = true;
+    }
+    return differ;
+}
+
+/// Whether one side's walk ended outside its first polygon, where the
+/// corridor keeps the height it had, and the other's inside it.
+fn keptHeight(
+    pair: *Pair,
+    expected: *const CorridorAnswer(f32),
+    actual: *const CorridorAnswer(i32),
+) bool {
+    var float_height: f32 = 0;
+    const float_over = !pair.float_query.getPolyHeight(
+        expected.path[0],
+        expected.pos,
+        &float_height,
+    ).failed;
+    var height: i32 = 0;
+    const over = !pair.query.getPolyHeight(actual.path[0], actual.pos, &height).failed;
+    return float_over != over;
+}
+
+test "integer path corridor: the float port's steps, the same polygons, points within tolerance" {
+    const gpa = testing.allocator;
+    var float_corridor: detour.PathCorridor = .empty;
+    if (!float_corridor.init(gpa, corridor_polys_max)) return error.OutOfMemory;
+    defer float_corridor.deinit(gpa);
+
+    var tally: Tally = .{};
+    var differs: [corridor_step_count]usize = @splat(0);
+    var stable_steps: [corridor_step_count]usize = @splat(0);
+    var kept_heights: usize = 0;
+    var shared_corners: usize = 0;
+    var prng: std.Random.DefaultPrng = .init(support.fuzzSeed(0x636f7272));
+    const random = prng.random();
+    var expected: CorridorAnswer(f32) = undefined;
+    var near: CorridorAnswer(f32) = undefined;
+    var actual: CorridorAnswer(i32) = undefined;
+    var float_path: [corridor_polys_max]PolyRef = undefined;
+    var path: [corridor_polys_max]PolyRef = undefined;
+    const filters = Filters.init(false);
+    for (try pairs(), 0..) |*pair, level| {
+        // A filter that leaves out polygons of one flag, for the trim: on a
+        // level whose polygons differ, some corridors cross them.
+        const trim_filters = Filters.init(pair.varied);
+        var case_index: usize = 0;
+        var tries: usize = 0;
+        while (case_index < 360 and tries < 4000) : (tries += 1) {
+            errdefer std.debug.print("  level {d}, case {d}\n", .{ level, case_index });
+            const start = pair.startAt(pair.groundPoint(random, 0.3), &filters) orelse continue;
+            const end = pair.startAt(pair.groundPoint(random, 0.3), &filters) orelse continue;
+            var float_count: usize = 0;
+            _ = pair.float_query.findPath(
+                start.ref,
+                end.ref,
+                metres(start.pos),
+                metres(end.pos),
+                &filters.float,
+                &float_path,
+                &float_count,
+            );
+            var count: usize = 0;
+            _ = pair.query.findPath(
+                start.ref,
+                end.ref,
+                start.pos,
+                end.pos,
+                &filters.int,
+                &path,
+                &count,
+            );
+            if (count == 0) continue;
+            if (!std.mem.eql(PolyRef, float_path[0..float_count], path[0..count])) continue;
+            var step: CorridorStep = @fromBackingInt(@as(u3, @intCast(case_index % 6)));
+            if (step == .trim and !pair.varied) step = .corners;
+            const case = corridorCase(pair, step, start, end, path[0..count], random) orelse
+                continue;
+            case_index += 1;
+
+            floatCorridorStep(pair, &float_corridor, case, @splat(0), &trim_filters.float, &expected);
+            var stable = true;
+            for (nudges) |by| {
+                floatCorridorStep(pair, &float_corridor, case, by, &trim_filters.float, &near);
+                if (!expected.sameDiscrete(&near)) stable = false;
+            }
+            tally.count(stable);
+            if (!stable) continue;
+            const s = @backingInt(step);
+            stable_steps[s] += 1;
+
+            integerCorridorStep(pair, case, &trim_filters.int, &actual);
+            // A corner at a vertex several portals share may be named by
+            // either polygon that holds it, each at its own height there.
+            const shared = step == .corners and sharedVertexCorners(pair, &expected, &actual);
+            if (shared) {
+                shared_corners += 1;
+            } else if (!expected.sameDiscrete(&actual)) {
+                differs[s] += 1;
+                continue;
+            }
+            const xz = tolerance + linkLimitSlack(pair, path[0..count]);
+            if (step == .move_position and keptHeight(pair, &expected, &actual)) {
+                // A walk that ends on a wall can end a hair outside its
+                // polygon on one side only, which keeps the old height
+                // there: both ends lie on the wall within tolerance.
+                kept_heights += 1;
+                try expectNear("corridor position", expected.pos, actual.pos, xz, 1e9);
+            } else {
+                try expectNear("corridor position", expected.pos, actual.pos, xz, height_tolerance);
+            }
+            try expectNear("corridor target", expected.target, actual.target, xz, height_tolerance);
+            const n = expected.corner_count;
+            for (expected.corners[0..n], actual.corners[0..n]) |want, got| {
+                try expectNear("corner", want, got, xz, if (shared) 1e9 else height_tolerance);
+            }
+        }
+    }
+    try tally.expectEnough("path corridor");
+    var all_differ: usize = 0;
+    for (differs, stable_steps, 0..) |n, of, s| {
+        const step: CorridorStep = @fromBackingInt(@as(u3, @intCast(s)));
+        std.debug.print("path corridor {t}: {d} of {d} stable cases differ\n", .{ step, n, of });
+        all_differ += n;
+    }
+    std.debug.print("path corridor: {d} stable cases, {d} walks kept the old height on one " ++
+        "side, {d} corners at a shared vertex named by another polygon\n", .{
+        tally.stable,
+        kept_heights,
+        shared_corners,
+    });
+    // Over fuzz seeds 0 to 31 the worst were 16 shared corners of 360
+    // corner cases, 17 kept heights of 1,418 cases (seed 30) and 10
+    // differing cases of 1,418; each limit stands above its worst.
+    try testing.expect(shared_corners * 10 <= stable_steps[@backingInt(CorridorStep.corners)]);
+    try testing.expect(kept_heights * 60 <= tally.stable);
+    // Each step stands on queries whose discrete answers can differ on a
+    // stable case at their own rates: findStraightPath's corners at a
+    // vertex several portals share, moveAlongSurface's end at one.
+    try testing.expect(all_differ * 40 <= tally.stable);
+}

@@ -22,7 +22,8 @@ code to.
 | geometry helpers | yes, `src/integer/common.zig` |
 | tiles from float tiles | yes, `src/integer/convert.zig`, the only file that reads floats |
 | `createNavMeshData` on integer input | no: a tile is built by the float builder and converted |
-| crowd, local boundary, obstacle avoidance, path corridor, path queue, proximity grid | no, float only |
+| path corridor | yes, `src/integer/path_corridor.zig`, over a corridor the caller holds |
+| crowd, local boundary, obstacle avoidance, path queue, proximity grid | no, float only |
 | tile cache and its builder | no, float only |
 
 The crowd and the tile cache steer by velocities, sample angles and blend
@@ -508,6 +509,7 @@ are stable, so it cannot pass by skipping.
 | `findPolysAroundCircle`, `findPolysAroundShape`, `findLocalNeighbourhood` | same polygons and parents; costs within 0.1% plus, per polygon of depth, `1 + 2 T` mm times the dearest area cost, plus `T` |
 | `getPolyWallSegments` | same count and references; ends within `T` plus 1/255 of the polygon's longest edge |
 | `findDistanceToWall` | distance within `T`; wall point within `T` unless two walls are equally near; normal within `max(2^-8, 2 T / distance)` when the distance is above 100 mm; two walls equally near at most 1/300 of the stable cases; two walls stacked at one place in the xz plane, where the distance measured across ties and either wall's height will do, at most 1/1000, the normal then held to the direction from the variant's own wall point (fuzz seeds 4, 11: 200 mm apart in height) |
+| `PathCorridor` | each step (corners, `movePosition`, `moveTargetPosition`, visibility and topology shortcuts, trim) on a corridor both ports found alike: the same polygons, flags and corner polygons, position, target and corners within `T`; a corner at a vertex several portals share may name either polygon and be read on either (at most 1/10 of the corner cases), a walk ending a hair outside its polygon on one side keeps the old height there (at most 1/60 of the stable cases), and the discrete answers differ on at most 1/40 of the stable cases |
 | random points | the point lies on the returned polygon within 1 mm, the polygon passes the filter, and over many draws polygons are picked in proportion to area |
 
 Every row is a seeded test of at least a thousand cases that prints the

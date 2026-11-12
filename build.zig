@@ -337,6 +337,7 @@ const integer_sources = [_][2][]const u8{
     .{ "integer_source_nav_mesh", "src/integer/nav_mesh.zig" },
     .{ "integer_source_node", "src/integer/node.zig" },
     .{ "integer_source_nav_mesh_query", "src/integer/nav_mesh_query.zig" },
+    .{ "integer_source_path_corridor", "src/integer/path_corridor.zig" },
 };
 
 fn addIntegerSources(b: *std.Build, module: *std.Build.Module) void {
